@@ -1,0 +1,39 @@
+# C++
+*.o
+*.obj
+*.so
+*.dll
+*.exe
+*.out
+*.a
+*.lib
+*.pch
+*.pdb
+*.ilk
+*.exp
+*.log
+
+# Build directories
+/build/
+/bin/
+/lib/
+/dist/
+/Debug/
+/Release/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyi
+*.pdb
+*.egg-info/
+.eggs/
+*.manifest
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
