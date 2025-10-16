@@ -87,6 +87,28 @@ std::optional<std::string> tryGetString(const json& obj, std::string_view key)
     return std::nullopt;
 }
 
+std::optional<double> asNumber(const json& node)
+{
+    if (node.is_number_float()) {
+        return node.get<double>();
+    }
+    if (node.is_number_integer()) {
+        return static_cast<double>(node.get<int64_t>());
+    }
+    if (node.is_string()) {
+        const std::string text = node.get<std::string>();
+        try {
+            size_t idx = 0;
+            const double value = std::stod(text, &idx);
+            if (idx == text.size()) {
+                return value;
+            }
+        } catch (...) {
+        }
+    }
+    return std::nullopt;
+}
+
 uint64_t toMs(double value)
 {
     return static_cast<uint64_t>(std::llround(value));
@@ -95,6 +117,129 @@ uint64_t toMs(double value)
 uint64_t toUs(double value)
 {
     return static_cast<uint64_t>(std::llround(value));
+}
+
+std::pair<uint64_t, uint64_t> extractDurationRangeMs(const json& obj, std::string_view keyBase, std::pair<uint64_t, uint64_t> defaultRange)
+{
+    uint64_t minMs = defaultRange.first;
+    uint64_t maxMs = defaultRange.second;
+
+    auto clampRange = [&](double minValMs, double maxValMs) {
+        uint64_t minCandidate = toMs(minValMs);
+        uint64_t maxCandidate = toMs(maxValMs);
+        if (minCandidate == 0 && maxCandidate != 0) {
+            minCandidate = maxCandidate;
+        }
+        if (maxCandidate == 0 && minCandidate != 0) {
+            maxCandidate = minCandidate;
+        }
+        if (minCandidate == 0 && maxCandidate == 0) {
+            minCandidate = std::max<uint64_t>(1, defaultRange.first ? defaultRange.first : 1);
+            maxCandidate = std::max<uint64_t>(minCandidate, defaultRange.second ? defaultRange.second : minCandidate);
+        }
+        if (minCandidate > maxCandidate) {
+            std::swap(minCandidate, maxCandidate);
+        }
+        minMs = minCandidate;
+        maxMs = maxCandidate;
+    };
+
+    auto readWithScale = [&](const json& container, const char* key, double scale) -> std::optional<double> {
+        const auto it = container.find(key);
+        if (it != container.end()) {
+            if (auto value = asNumber(*it)) {
+                return *value * scale;
+            }
+        }
+        return std::nullopt;
+    };
+
+    auto parseNode = [&](const json& node, double defaultScale) -> bool {
+        bool localFound = false;
+        double localMin = 0.0;
+        double localMax = 0.0;
+
+        if (node.is_object()) {
+            if (auto minVal = readWithScale(node, "min", defaultScale)) {
+                localMin = *minVal;
+                localFound = true;
+            }
+            if (auto minVal = readWithScale(node, "min_ms", 1.0)) {
+                localMin = *minVal;
+                localFound = true;
+            }
+            if (auto minVal = readWithScale(node, "min_us", 0.001)) {
+                localMin = *minVal;
+                localFound = true;
+            }
+
+            if (auto maxVal = readWithScale(node, "max", defaultScale)) {
+                localMax = *maxVal;
+                localFound = true;
+            }
+            if (auto maxVal = readWithScale(node, "max_ms", 1.0)) {
+                localMax = *maxVal;
+                localFound = true;
+            }
+            if (auto maxVal = readWithScale(node, "max_us", 0.001)) {
+                localMax = *maxVal;
+                localFound = true;
+            }
+
+            if (!localFound) {
+                if (auto meanVal = readWithScale(node, "mean", defaultScale)) {
+                    localMin = localMax = *meanVal;
+                    localFound = true;
+                } else if (auto meanVal = readWithScale(node, "mean_ms", 1.0)) {
+                    localMin = localMax = *meanVal;
+                    localFound = true;
+                } else if (auto meanVal = readWithScale(node, "mean_us", 0.001)) {
+                    localMin = localMax = *meanVal;
+                    localFound = true;
+                } else if (auto valueVal = readWithScale(node, "value", defaultScale)) {
+                    localMin = localMax = *valueVal;
+                    localFound = true;
+                }
+            }
+        } else if (auto numeric = asNumber(node)) {
+            localMin = localMax = *numeric * defaultScale;
+            localFound = true;
+        }
+
+        if (localFound) {
+            const double fallback = localMax != 0.0 ? localMax : (localMin != 0.0 ? localMin : static_cast<double>(defaultRange.second));
+            const double resolvedMin = localMin != 0.0 ? localMin : fallback;
+            const double resolvedMax = localMax != 0.0 ? localMax : fallback;
+            clampRange(resolvedMin, resolvedMax);
+        }
+        return localFound;
+    };
+
+    const std::string base(keyBase);
+    bool updated = false;
+
+    if (const auto it = obj.find(base + "_ms"); it != obj.end()) {
+        updated = parseNode(*it, 1.0);
+    }
+    if (!updated) {
+        if (const auto it = obj.find(base + "_us"); it != obj.end()) {
+            updated = parseNode(*it, 0.001);
+        }
+    }
+    if (!updated) {
+        if (const auto it = obj.find(base); it != obj.end()) {
+            updated = parseNode(*it, 1.0);
+            if (!updated) {
+                updated = parseNode(*it, 0.001);
+            }
+        }
+    }
+
+    if (!updated) {
+        clampRange(defaultRange.first, defaultRange.second);
+    }
+
+    return { minMs, maxMs };
 }
 
 uint64_t extractDurationMs(const json& obj, std::string_view keyBase, uint64_t defaultValue)
@@ -235,23 +380,20 @@ void SimulationEngine::loadWorkload(const json& workloadConfig)
         task.name = getStringOr(t, "name", "task_" + std::to_string(task.id));
         task.type = getStringOr(t, "class", "background");
         task.priority = getIntOr(t, "priority", 5);
-        task.arrivalTime = extractDurationMs(t, "arrival", 0);
-        task.execTime = extractDurationMs(t, "exec", 10);
+        task.arrivalTime = extractDurationMs(t, "start", extractDurationMs(t, "arrival", 0));
+        const auto execRange = extractDurationRangeMs(t, "exec", { 10u, 10u });
+        task.execTime = execRange;
         task.deadline = extractDurationMs(t, "deadline", 0);
 
-        if (task.execTime == 0) {
-            SPDLOG_WARN("Task '{}' resolved execution time to 0 ms; forcing minimum of 1 ms", task.name);
-            task.execTime = 1;
-        }
-
-        task.remainingTime = task.execTime;
+        task.remainingTime = task.execTime.second;
         tasks_.push_back(task);
 
-        SPDLOG_DEBUG("Loaded task id={} name={} arrival={}ms exec={}ms priority={} class={}",
+        SPDLOG_DEBUG("Loaded task id={} name={} arrival={}ms exec[min={}, max={}] priority={} class={}",
             task.id,
             task.name,
             task.arrivalTime,
-            task.execTime,
+            task.execTime.first,
+            task.execTime.second,
             task.priority,
             task.type);
 
