@@ -20,6 +20,7 @@
 /dist/
 /Debug/
 /Release/
+/libs/
 
 # Python
 __pycache__/

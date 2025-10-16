@@ -1,0 +1,63 @@
+#pragma once
+
+#include <memory>
+#include <queue>
+#include <vector>
+#include <string>
+#include <unordered_map>
+#include <cstdint>
+#include <nlohmann/json.hpp>
+
+#include "Scheduler.h"
+#include "Task.h"
+#include "Event.h"
+#include "MetricsCollector.h"
+
+using json = nlohmann::json;
+
+/**
+ * @brief The SimulationEngine manages simulation time, events, and scheduler coordination.
+ * It is responsible for:
+ *  - Advancing simulated time
+ *  - Dispatching events (arrivals, completions, I/O, etc.)
+ *  - Invoking the Scheduler for task selection
+ *  - Recording metrics for later export
+ */
+class SimulationEngine {
+public:
+    explicit SimulationEngine(std::unique_ptr<IScheduler> scheduler);
+
+    // Load workload and scenario configuration from JSON
+    void loadWorkload(const json& workloadConfig);
+    void configureScenario(const json& scenarioConfig);
+
+    // Run the full simulation for a given duration (ms)
+    void run(uint64_t durationMs);
+
+    // Export metrics + timeline trace
+    json exportResults() const;
+
+private:
+    // --- Internal structures ---
+    struct Core {
+        Task* currentTask = nullptr;
+        uint64_t busyUntil = 0;
+    };
+
+    std::unique_ptr<IScheduler> scheduler_;
+    MetricsCollector metrics_;
+    std::vector<Core> cores_;
+    std::priority_queue<Event, std::vector<Event>, EventCompare> eventQueue_;
+
+    std::vector<Task> tasks_;
+    uint64_t currentTime_ = 0;
+    uint64_t contextSwitchCostUs_ = 15;
+    uint32_t numCores_ = 1;
+    bool verbose_ = false;
+
+    // --- Internal helper functions ---
+    void handleEvent(const Event& e);
+    void dispatchTasks();
+    void scheduleNextEvent(Task& t);
+    void log(const std::string& msg) const;
+};
