@@ -48,6 +48,20 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(spdlog)
 
+# === yaml-cpp ===
+FetchContent_Declare(
+  yaml-cpp
+  GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+  GIT_TAG 0.8.0
+  SOURCE_DIR ${PROJECT_SOURCE_DIR}/libs/yaml-cpp
+)
+FetchContent_MakeAvailable(yaml-cpp)
+
+# Suppress MSVC "unsafe/deprecated" warnings (C4996)
+if (MSVC)
+    add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+endif()
+
 # --- Source files ---
 file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/*.cpp)
 
@@ -59,7 +73,12 @@ target_link_libraries(scheduler_sim
   PRIVATE
     nlohmann_json::nlohmann_json
     argparse
-    spdlog::spdlog_header_only  # Uncomment if using spdlog
+    spdlog::spdlog_header_only
+    yaml-cpp
+)
+
+target_include_directories(scheduler_sim SYSTEM PRIVATE
+  ${spdlog_SOURCE_DIR}/include
 )
 
 # --- Compiler warnings ---
@@ -76,3 +95,12 @@ install(TARGETS scheduler_sim RUNTIME DESTINATION bin)
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "Source dir: ${PROJECT_SOURCE_DIR}")
+
+if (EXISTS "${PROJECT_SOURCE_DIR}/data")
+  add_custom_command(TARGET scheduler_sim POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${PROJECT_SOURCE_DIR}/data"
+            "$<TARGET_FILE_DIR:scheduler_sim>/data"
+    COMMENT "Copying data directory to output"
+  )
+endif()

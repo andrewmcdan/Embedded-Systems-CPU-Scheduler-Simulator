@@ -1,0 +1,52 @@
+# ===========================================================
+# Simulation Scenario Configuration
+# ===========================================================
+# This file defines the runtime parameters of the simulation:
+# - system hardware properties
+# - timing costs
+# - environmental events (like thermal throttling)
+# ===========================================================
+
+system:
+  name: "v2 IoT Compute Node"
+  cores: 4
+  clock_speed_mhz: 1800
+  base_power_watts: 6.5
+  max_power_watts: 15
+  idle_power_watts: 1.2
+
+timing:
+  context_switch_cost_us: 25
+  io_completion_quantum_us: 200
+  tick_interval_us: 1000
+
+thermal:
+  # Define thermal throttling events that affect CPU performance
+  events:
+    - { start_ms: 20000, end_ms: 35000, freq_multiplier: 0.75, power_limit_w: 9 }
+    - { start_ms: 70000, end_ms: 85000, freq_multiplier: 0.50, power_limit_w: 6 }
+    - { start_ms: 120000, end_ms: 140000, freq_multiplier: 0.6, power_limit_w: 7 }
+
+io:
+  disk_latency_us: 500
+  net_latency_us: 800
+  flash_latency_us: 300
+
+network:
+  bandwidth_mbps: 50
+  packet_loss_percent: 0.3
+  congestion_events:
+    - { start_ms: 60000, end_ms: 80000, drop_rate_percent: 15 }
+
+battery:
+  capacity_mah: 3000
+  voltage_v: 3.7
+  discharge_curve:
+    - { load_w: 2, eff: 0.95 }
+    - { load_w: 6, eff: 0.85 }
+    - { load_w: 12, eff: 0.70 }
+
+logging:
+  verbose: true
+  energy_tracking: true
+  trace_interval_ms: 1000

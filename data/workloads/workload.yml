@@ -1,0 +1,24 @@
+tasks:
+  - name: wake_word_detection
+    class: rt
+    period_us: 10000
+    deadline_us: 10000
+    exec_us: { min: 600, max: 1200 }
+    priority: 1
+  - name: display_vsync
+    class: rt
+    period_us: 16667
+    deadline_us: 16667
+    exec_us: { min: 500, max: 1000 }
+    priority: 2
+  - name: ui_input_handler
+    class: interactive
+    arrival: { type: poisson, mean_ms: 300 }
+    exec_us: { min: 200, max: 2000 }
+    priority: 5
+  - name: log_uploader
+    class: background
+    arrival: { type: burst_every_s: 45, burst_count: 5 }
+    exec_us: { min: 5000, max: 50000 }
+    io_wait_us: { min: 50000, max: 500000 }
+    priority: 8

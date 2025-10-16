@@ -1,7 +1,206 @@
 #include "SimulationEngine.h"
+#include <algorithm>
+#include <cctype>
+#include <cmath>
 #include <iomanip>
+#include <nlohmann/json.hpp>
+#include <optional>
 #include <spdlog/spdlog.h>
 #include <stdexcept>
+#include <string_view>
+
+namespace {
+using json = nlohmann::json;
+
+std::optional<double> tryGetNumber(const json& obj, std::string_view key)
+{
+    if (!obj.is_object()) {
+        return std::nullopt;
+    }
+    const std::string keyStr(key);
+    const auto it = obj.find(keyStr);
+    if (it == obj.end() || it->is_null()) {
+        return std::nullopt;
+    }
+    if (it->is_number_float()) {
+        return it->get<double>();
+    }
+    if (it->is_number_integer()) {
+        return static_cast<double>(it->get<int64_t>());
+    }
+    if (it->is_string()) {
+        const std::string text = it->get<std::string>();
+        try {
+            size_t idx = 0;
+            const double value = std::stod(text, &idx);
+            if (idx == text.size()) {
+                return value;
+            }
+        } catch (...) {
+        }
+    }
+    SPDLOG_WARN("Field '{}' is not numeric; ignoring entry", keyStr);
+    return std::nullopt;
+}
+
+std::optional<bool> tryGetBool(const json& obj, std::string_view key)
+{
+    if (!obj.is_object()) {
+        return std::nullopt;
+    }
+    const std::string keyStr(key);
+    const auto it = obj.find(keyStr);
+    if (it == obj.end() || it->is_null()) {
+        return std::nullopt;
+    }
+    if (it->is_boolean()) {
+        return it->get<bool>();
+    }
+    if (it->is_string()) {
+        std::string text = it->get<std::string>();
+        std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (text == "true" || text == "1" || text == "yes") {
+            return true;
+        }
+        if (text == "false" || text == "0" || text == "no") {
+            return false;
+        }
+    }
+    SPDLOG_WARN("Field '{}' is not boolean; ignoring entry", keyStr);
+    return std::nullopt;
+}
+
+std::optional<std::string> tryGetString(const json& obj, std::string_view key)
+{
+    if (!obj.is_object()) {
+        return std::nullopt;
+    }
+    const std::string keyStr(key);
+    const auto it = obj.find(keyStr);
+    if (it == obj.end() || it->is_null()) {
+        return std::nullopt;
+    }
+    if (it->is_string()) {
+        return it->get<std::string>();
+    }
+    SPDLOG_WARN("Field '{}' is not a string; ignoring entry", keyStr);
+    return std::nullopt;
+}
+
+uint64_t toMs(double value)
+{
+    return static_cast<uint64_t>(std::llround(value));
+}
+
+uint64_t toUs(double value)
+{
+    return static_cast<uint64_t>(std::llround(value));
+}
+
+uint64_t extractDurationMs(const json& obj, std::string_view keyBase, uint64_t defaultValue)
+{
+    if (!obj.is_object()) {
+        return defaultValue;
+    }
+    const std::string base(keyBase);
+    const std::string msKey = base + "_ms";
+    if (auto msVal = tryGetNumber(obj, msKey)) {
+        return toMs(*msVal);
+    }
+    const std::string sKey = base + "_s";
+    if (auto sVal = tryGetNumber(obj, sKey)) {
+        return toMs(*sVal * 1000.0);
+    }
+    const std::string usKey = base + "_us";
+    if (auto usVal = tryGetNumber(obj, usKey)) {
+        return toMs(*usVal / 1000.0);
+    }
+    const auto usObjIt = obj.find(usKey);
+    if (usObjIt != obj.end() && usObjIt->is_object()) {
+        if (auto maxVal = tryGetNumber(*usObjIt, "max")) {
+            return toMs(*maxVal / 1000.0);
+        }
+        if (auto meanVal = tryGetNumber(*usObjIt, "mean")) {
+            return toMs(*meanVal / 1000.0);
+        }
+        if (auto valueVal = tryGetNumber(*usObjIt, "value")) {
+            return toMs(*valueVal / 1000.0);
+        }
+        if (auto minVal = tryGetNumber(*usObjIt, "min")) {
+            return toMs(*minVal / 1000.0);
+        }
+    }
+    const auto baseIt = obj.find(base);
+    if (baseIt != obj.end() && baseIt->is_object()) {
+        const json& nested = *baseIt;
+        if (auto meanMs = tryGetNumber(nested, "mean_ms")) {
+            return toMs(*meanMs);
+        }
+        if (auto offsetMs = tryGetNumber(nested, "offset_ms")) {
+            return toMs(*offsetMs);
+        }
+        if (auto meanUs = tryGetNumber(nested, "mean_us")) {
+            return toMs(*meanUs / 1000.0);
+        }
+        if (nested.contains("type")) {
+            SPDLOG_DEBUG("Duration '{}' described as distribution '{}'; using representative value", base, nested.value("type", std::string("unknown")));
+        }
+    }
+    return defaultValue;
+}
+
+uint64_t extractDurationUs(const json& obj, std::string_view keyBase, uint64_t defaultValue)
+{
+    if (!obj.is_object()) {
+        return defaultValue;
+    }
+    const std::string base(keyBase);
+    const std::string usKey = base + "_us";
+    if (auto usVal = tryGetNumber(obj, usKey)) {
+        return toUs(*usVal);
+    }
+    const std::string msKey = base + "_ms";
+    if (auto msVal = tryGetNumber(obj, msKey)) {
+        return toUs(*msVal * 1000.0);
+    }
+    const auto baseIt = obj.find(base);
+    if (baseIt != obj.end() && baseIt->is_object()) {
+        const json& nested = *baseIt;
+        if (auto valueUs = tryGetNumber(nested, "us")) {
+            return toUs(*valueUs);
+        }
+        if (auto valueMs = tryGetNumber(nested, "ms")) {
+            return toUs(*valueMs * 1000.0);
+        }
+    }
+    return defaultValue;
+}
+
+int getIntOr(const json& obj, std::string_view key, int defaultValue)
+{
+    if (auto value = tryGetNumber(obj, key)) {
+        return static_cast<int>(std::llround(*value));
+    }
+    return defaultValue;
+}
+
+std::string getStringOr(const json& obj, std::string_view key, std::string defaultValue)
+{
+    if (auto value = tryGetString(obj, key)) {
+        return *value;
+    }
+    return defaultValue;
+}
+
+bool getBoolOr(const json& obj, std::string_view key, bool defaultValue)
+{
+    if (auto value = tryGetBool(obj, key)) {
+        return *value;
+    }
+    return defaultValue;
+}
+
+} // namespace
 
 // ---------- Constructor ----------
 SimulationEngine::SimulationEngine(std::unique_ptr<IScheduler> scheduler)
@@ -11,52 +210,84 @@ SimulationEngine::SimulationEngine(std::unique_ptr<IScheduler> scheduler)
         throw std::invalid_argument("SimulationEngine requires a valid scheduler");
     }
     cores_.resize(1); // default single-core
-    spdlog::debug("SimulationEngine initialized with {} core(s)", cores_.size());
+    SPDLOG_DEBUG("SimulationEngine initialized with {} core(s)", cores_.size());
 }
 
 // ---------- Load Workload ----------
 void SimulationEngine::loadWorkload(const json& workloadConfig)
 {
-    if (!workloadConfig.contains("tasks")) {
-        spdlog::warn("No tasks found in workload config.");
+    if (!workloadConfig.contains("tasks") || !workloadConfig["tasks"].is_array()) {
+        SPDLOG_WARN("Workload config missing 'tasks' array; skipping workload.");
         return;
     }
 
-    for (const auto& t : workloadConfig["tasks"]) {
+    const auto& tasksArray = workloadConfig["tasks"];
+    tasks_.reserve(tasks_.size() + tasksArray.size());
+
+    for (const auto& t : tasksArray) {
+        if (!t.is_object()) {
+            SPDLOG_WARN("Skipping malformed task entry (expected object, got {})", t.type_name());
+            continue;
+        }
+
         Task task;
-        task.id = tasks_.size();
-        task.name = t.value("name", "task_" + std::to_string(task.id));
-        task.arrivalTime = t.value("arrival_ms", 0);
-        task.execTime = t.value("exec_ms", 10);
-        task.priority = t.value("priority", 5);
-        task.deadline = t.value("deadline_ms", 0);
-        task.type = t.value("class", "background");
+        task.id = static_cast<int>(tasks_.size());
+        task.name = getStringOr(t, "name", "task_" + std::to_string(task.id));
+        task.type = getStringOr(t, "class", "background");
+        task.priority = getIntOr(t, "priority", 5);
+        task.arrivalTime = extractDurationMs(t, "arrival", 0);
+        task.execTime = extractDurationMs(t, "exec", 10);
+        task.deadline = extractDurationMs(t, "deadline", 0);
+
+        if (task.execTime == 0) {
+            SPDLOG_WARN("Task '{}' resolved execution time to 0 ms; forcing minimum of 1 ms", task.name);
+            task.execTime = 1;
+        }
+
         task.remainingTime = task.execTime;
         tasks_.push_back(task);
 
-        spdlog::debug("Loaded task id={} name={} arrival={}ms exec={}ms priority={}",
+        SPDLOG_DEBUG("Loaded task id={} name={} arrival={}ms exec={}ms priority={} class={}",
             task.id,
             task.name,
             task.arrivalTime,
             task.execTime,
-            task.priority);
+            task.priority,
+            task.type);
 
-        // Enqueue initial event
-        Event e(EventType::TASK_ARRIVAL, task.arrivalTime, &tasks_.back());
-        eventQueue_.push(e);
-        spdlog::debug("Queued TASK_ARRIVAL at {} ms for task {}", task.arrivalTime, task.name);
+        Event arrival(EventType::TASK_ARRIVAL, task.arrivalTime, &tasks_.back());
+        eventQueue_.push(arrival);
+        SPDLOG_DEBUG("Queued TASK_ARRIVAL at {} ms for task {}", task.arrivalTime, task.name);
     }
 }
 
 // ---------- Configure Scenario ----------
 void SimulationEngine::configureScenario(const json& scenarioConfig)
 {
-    numCores_ = scenarioConfig.value("cores", 1);
-    contextSwitchCostUs_ = scenarioConfig.value("context_switch_cost_us", 15);
-    verbose_ = scenarioConfig.value("verbose", false);
-    cores_.resize(numCores_);
+    const json schedulerCfg = scenarioConfig.value("scheduler", json::object());
+    const json hardwareCfg = scenarioConfig.value("hardware", json::object());
+    const json loggingCfg = scenarioConfig.value("logging", json::object());
 
-    spdlog::info("Scenario configured: cores={}, context_switch_cost_us={}, verbose={}",
+    const double coresCandidate = tryGetNumber(scenarioConfig, "cores")
+                                      .value_or(tryGetNumber(scenarioConfig, "num_cores")
+                                              .value_or(tryGetNumber(hardwareCfg, "cores").value_or(1.0)));
+
+    numCores_ = static_cast<size_t>(std::max<int>(1, static_cast<int>(std::llround(coresCandidate))));
+
+    const uint64_t scenarioContextSwitchUs = extractDurationUs(scenarioConfig, "context_switch_cost", 15);
+    contextSwitchCostUs_ = extractDurationUs(schedulerCfg, "context_switch_cost", scenarioContextSwitchUs);
+
+    verbose_ = getBoolOr(schedulerCfg, "verbose",
+        getBoolOr(loggingCfg, "verbose",
+            getBoolOr(scenarioConfig, "verbose", false)));
+
+    cores_.resize(numCores_);
+    for (auto& core : cores_) {
+        core.currentTask = nullptr;
+        core.busyUntil = 0;
+    }
+
+    SPDLOG_INFO("Scenario configured: cores={}, context_switch_cost_us={}, verbose={}",
         numCores_,
         contextSwitchCostUs_,
         verbose_);
@@ -65,7 +296,7 @@ void SimulationEngine::configureScenario(const json& scenarioConfig)
 // ---------- Run Simulation ----------
 void SimulationEngine::run(uint64_t durationMs)
 {
-    spdlog::info("[Engine] Starting simulation ({} ms)", durationMs);
+    SPDLOG_INFO("[Engine] Starting simulation ({} ms)", durationMs);
     currentTime_ = 0;
 
     while (!eventQueue_.empty() && currentTime_ <= durationMs) {
@@ -74,7 +305,7 @@ void SimulationEngine::run(uint64_t durationMs)
 
         // Advance simulation clock
         currentTime_ = e.timestamp;
-        spdlog::debug("Advancing to {} ms -> processing event type {} for task {}",
+        SPDLOG_DEBUG("Advancing to {} ms -> processing event type {} for task {}",
             currentTime_,
             static_cast<int>(e.type),
             e.task ? e.task->name : "<null>");
@@ -84,7 +315,7 @@ void SimulationEngine::run(uint64_t durationMs)
     }
 
     // Wrap up
-    spdlog::info("[Engine] Simulation complete at {} ms", currentTime_);
+    SPDLOG_INFO("[Engine] Simulation complete at {} ms", currentTime_);
     scheduler_->printStats();
     metrics_.finalize(currentTime_);
 }
@@ -94,24 +325,24 @@ void SimulationEngine::handleEvent(const Event& e)
 {
     switch (e.type) {
     case EventType::TASK_ARRIVAL:
-        spdlog::debug("Handling TASK_ARRIVAL for task {}", e.task ? e.task->name : "<null>");
+        SPDLOG_DEBUG("Handling TASK_ARRIVAL for task {}", e.task ? e.task->name : "<null>");
         scheduler_->onTaskArrival(*e.task);
         metrics_.recordArrival(e.task->id, e.timestamp);
         break;
 
     case EventType::TASK_COMPLETION:
-        spdlog::debug("Handling TASK_COMPLETION for task {}", e.task ? e.task->name : "<null>");
+        SPDLOG_DEBUG("Handling TASK_COMPLETION for task {}", e.task ? e.task->name : "<null>");
         scheduler_->onTaskCompletion(*e.task);
         metrics_.recordCompletion(e.task->id, e.timestamp);
         break;
 
     case EventType::IO_COMPLETION:
-        spdlog::debug("Handling IO_COMPLETION for task {}", e.task ? e.task->name : "<null>");
+        SPDLOG_DEBUG("Handling IO_COMPLETION for task {}", e.task ? e.task->name : "<null>");
         scheduler_->onIOCompletion(*e.task);
         break;
 
     default:
-        spdlog::warn("Received unknown event type {}", static_cast<int>(e.type));
+        SPDLOG_WARN("Received unknown event type {}", static_cast<int>(e.type));
         break;
     }
 }
@@ -131,7 +362,7 @@ void SimulationEngine::dispatchTasks()
                 Event completion(EventType::TASK_COMPLETION, core.busyUntil, next);
                 eventQueue_.push(completion);
 
-                spdlog::debug("Dispatching task {} on core {} -> finishes @ {}",
+                SPDLOG_DEBUG("Dispatching task {} on core {} -> finishes @ {}",
                     next->name,
                     coreIndex,
                     core.busyUntil);
@@ -139,7 +370,7 @@ void SimulationEngine::dispatchTasks()
                 if (verbose_)
                     log("Dispatching task " + next->name + " -> finishes @ " + std::to_string(core.busyUntil));
             } else {
-                spdlog::trace("Core {} idle at {} ms (no task available)", coreIndex, currentTime_);
+                SPDLOG_TRACE("Core {} idle at {} ms (no task available)", coreIndex, currentTime_);
                 core.currentTask = nullptr;
             }
         }
@@ -161,5 +392,5 @@ json SimulationEngine::exportResults() const
 // ---------- Log Helper ----------
 void SimulationEngine::log(const std::string& msg) const
 {
-    spdlog::debug("[t={} ms] {}", currentTime_, msg);
+    SPDLOG_DEBUG("[t={} ms] {}", currentTime_, msg);
 }

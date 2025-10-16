@@ -1,0 +1,154 @@
+# ===========================================================
+# Workload Definition
+# ===========================================================
+# Each task represents a recurring or one-time process on
+# the simulated embedded system. Tasks are grouped by type:
+# - Real-Time (RT)
+# - Interactive (UI-driven)
+# - Background (maintenance, sync, analytics)
+# ===========================================================
+
+tasks:
+  # ----------------------------
+  # Real-Time Audio & Sensor Tasks
+  # ----------------------------
+  - name: "wake_word_detection"
+    class: rt
+    period_ms: 10
+    deadline_ms: 10
+    exec_ms: { min: 0.5, max: 1.2 }
+    priority: 1
+    start_ms: 0
+    jitter_percent: 5
+
+  - name: "audio_processing"
+    class: rt
+    period_ms: 5
+    deadline_ms: 5
+    exec_ms: { min: 0.3, max: 0.8 }
+    priority: 2
+    start_ms: 0
+    jitter_percent: 3
+
+  - name: "display_vsync"
+    class: rt
+    period_ms: 16
+    deadline_ms: 16
+    exec_ms: { min: 0.6, max: 1.0 }
+    priority: 3
+    start_ms: 0
+    jitter_percent: 2
+
+  - name: "motor_feedback_loop"
+    class: rt
+    period_ms: 20
+    deadline_ms: 20
+    exec_ms: { min: 1.0, max: 1.5 }
+    priority: 4
+    start_ms: 500
+    jitter_percent: 10
+
+  # ----------------------------
+  # Interactive Tasks (User input, UI)
+  # ----------------------------
+  - name: "ui_input_handler"
+    class: interactive
+    arrival_pattern: { type: poisson, mean_ms: 250 }
+    exec_ms: { min: 1, max: 3 }
+    deadline_ms: 100
+    priority: 6
+    start_ms: 0
+
+  - name: "voice_assistant_query"
+    class: interactive
+    arrival_pattern: { type: burst, mean_interval_ms: 3000, burst_size: 5 }
+    exec_ms: { min: 20, max: 60 }
+    deadline_ms: 500
+    priority: 5
+    start_ms: 2000
+
+  - name: "screen_refresh"
+    class: interactive
+    period_ms: 33
+    exec_ms: { min: 0.7, max: 1.2 }
+    deadline_ms: 33
+    priority: 7
+    start_ms: 0
+
+  # ----------------------------
+  # Background / Maintenance Tasks
+  # ----------------------------
+  - name: "data_logger"
+    class: background
+    arrival_pattern: { type: periodic, period_ms: 5000 }
+    exec_ms: { min: 40, max: 120 }
+    io_wait_ms: { min: 200, max: 600 }
+    priority: 8
+    start_ms: 1000
+
+  - name: "wifi_sync"
+    class: background
+    arrival_pattern: { type: burst_every_s, value: 60, burst_count: 10 }
+    exec_ms: { min: 50, max: 200 }
+    io_wait_ms: { min: 100, max: 800 }
+    priority: 9
+    start_ms: 15000
+
+  - name: "firmware_update_check"
+    class: background
+    arrival_pattern: { type: periodic, period_ms: 30000 }
+    exec_ms: { min: 200, max: 500 }
+    io_wait_ms: { min: 200, max: 800 }
+    priority: 9
+    start_ms: 0
+
+  - name: "cache_maintenance"
+    class: background
+    arrival_pattern: { type: periodic, period_ms: 10000 }
+    exec_ms: { min: 100, max: 200 }
+    io_wait_ms: { min: 100, max: 200 }
+    priority: 10
+    start_ms: 0
+
+  # ----------------------------
+  # System Health & Diagnostics
+  # ----------------------------
+  - name: "temperature_monitor"
+    class: background
+    period_ms: 1000
+    exec_ms: { min: 1, max: 2 }
+    priority: 2
+    start_ms: 0
+
+  - name: "power_manager"
+    class: background
+    period_ms: 2000
+    exec_ms: { min: 1, max: 2 }
+    priority: 3
+    start_ms: 0
+
+  - name: "network_watchdog"
+    class: background
+    period_ms: 500
+    exec_ms: { min: 0.5, max: 1.0 }
+    priority: 2
+    start_ms: 0
+
+  # ----------------------------
+  # Batch & Analytics (heavy background)
+  # ----------------------------
+  - name: "ml_cache_builder"
+    class: background
+    arrival_pattern: { type: periodic, period_ms: 60000 }
+    exec_ms: { min: 800, max: 1500 }
+    io_wait_ms: { min: 200, max: 1000 }
+    priority: 10
+    start_ms: 5000
+
+  - name: "system_log_uploader"
+    class: background
+    arrival_pattern: { type: periodic, period_ms: 90000 }
+    exec_ms: { min: 1000, max: 3000 }
+    io_wait_ms: { min: 500, max: 1500 }
+    priority: 10
+    start_ms: 8000
