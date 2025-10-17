@@ -26,6 +26,8 @@ struct Task {
     int priority = 0;
     std::string type = "background"; // "rt", "interactive", "background"
     TaskState state = TaskState::NEW;
+    uint64_t currentTimeSliceMs = 0; // Requested quantum for next dispatch (0 => run to completion)
+    uint64_t lastRunDurationMs = 0; // Duration of the most recent dispatch slice
 
     bool isComplete() const { return remainingTime == 0 || state == TaskState::COMPLETED; }
     uint64_t minExecTime() const { return execTime.first; }

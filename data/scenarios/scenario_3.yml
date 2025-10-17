@@ -8,18 +8,18 @@
 # ===========================================================
 
 system:
-  name: "4 Core IoT Compute Node"
-  cores: 4
-  clock_speed_mhz: 1800
+  name: "2 Core IoT Compute Node"
+  cores: 2
+  clock_speed_mhz: 1000
   base_power_watts: 6.5
   max_power_watts: 15
   idle_power_watts: 1.2
   run_duration_ms: 30000
 
 timing:
-  context_switch_cost_us: 25
-  io_completion_quantum_us: 200
-  tick_interval_us: 1000
+  context_switch_cost_us: 50
+  io_completion_quantum_us: 300
+  tick_interval_us: 500
 
 thermal:
   # Define thermal throttling events that affect CPU performance

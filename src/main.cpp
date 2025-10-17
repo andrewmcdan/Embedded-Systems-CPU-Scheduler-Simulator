@@ -11,6 +11,9 @@
 #include <stdexcept>
 #include <string>
 #include <limits>
+#include <cctype>
+#include <algorithm>
+#include <vector>
 
 // External libs
 #include <argparse/argparse.hpp>
@@ -106,6 +109,84 @@ static json loadConfig(const std::string& path)
     return loadJson(path);
 }
 
+namespace {
+
+std::string trimCopy(const std::string& value)
+{
+    const auto begin = std::find_if_not(value.begin(), value.end(), [](unsigned char ch) { return std::isspace(ch) != 0; });
+    const auto end = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char ch) { return std::isspace(ch) != 0; }).base();
+    if (begin >= end) {
+        return std::string();
+    }
+    return std::string(begin, end);
+}
+
+std::string normalisePolicy(const std::string& raw)
+{
+    std::string trimmed = trimCopy(raw);
+    std::transform(trimmed.begin(), trimmed.end(), trimmed.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return trimmed;
+}
+
+std::vector<std::string> parsePolicies(const std::string& raw)
+{
+    std::vector<std::string> result;
+    std::stringstream ss(raw);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        std::string normalised = normalisePolicy(token);
+        if (!normalised.empty()) {
+            result.push_back(normalised);
+        }
+    }
+    if (result.empty()) {
+        std::string fallback = normalisePolicy(raw);
+        if (!fallback.empty()) {
+            result.push_back(fallback);
+        }
+    }
+    return result;
+}
+
+std::unique_ptr<IScheduler> createScheduler(const std::string& policy)
+{
+    if (policy == "fcfs") {
+        return std::make_unique<FCFSScheduler>();
+    }
+    if (policy == "mlfq") {
+        return std::make_unique<MLFQScheduler>();
+    }
+    return nullptr;
+}
+
+std::filesystem::path deriveOutputPath(const std::filesystem::path& basePath, const std::string& policy, bool multi)
+{
+    if (!multi) {
+        return basePath;
+    }
+
+    std::filesystem::path directory = basePath.parent_path();
+    std::string stem = basePath.stem().string();
+    std::string extension = basePath.extension().string();
+
+    if (stem.empty()) {
+        stem = "trace";
+    }
+    if (extension.empty()) {
+        extension = ".json";
+    }
+
+    std::filesystem::path filename = stem + "_" + policy + extension;
+    if (!directory.empty()) {
+        return directory / filename;
+    }
+    return filename;
+}
+
+} // namespace
+
 int main(int argc, char* argv[])
 {
 
@@ -148,14 +229,14 @@ int main(int argc, char* argv[])
     // --- Parse CLI arguments ---
     std::string workloadPath = program.get<std::string>("--workload_file");
     std::string scenarioPath = program.get<std::string>("--scenario_file");
-    std::string policyName = program.get<std::string>("--scheduler_policy");
+    std::string policyArg = program.get<std::string>("--scheduler_policy");
     std::string outputPath = program.get<std::string>("--out_file");
     int duration = program.get<int>("--duration");
     bool verbose = program.get<bool>("--verbose");
     SPDLOG_TRACE("CLI values -> workload='{}', scenario='{}', policy='{}', duration={}ms, out='{}', verbose={}",
         workloadPath,
         scenarioPath,
-        policyName,
+        policyArg,
         duration,
         outputPath,
         verbose);
@@ -192,7 +273,25 @@ int main(int argc, char* argv[])
         durationOverridden = true;
     }
 
-    SPDLOG_INFO("Policy: {}", policyName);
+    std::vector<std::string> policies = parsePolicies(policyArg);
+    if (policies.empty()) {
+        SPDLOG_ERROR("No scheduler policies specified");
+        return 1;
+    }
+    const bool multiPolicy = policies.size() > 1;
+
+    if (multiPolicy) {
+        std::string joined;
+        for (size_t i = 0; i < policies.size(); ++i) {
+            if (i != 0) {
+                joined += ", ";
+            }
+            joined += policies[i];
+        }
+        SPDLOG_INFO("Policies: {}", joined);
+    } else {
+        SPDLOG_INFO("Policy: {}", policies.front());
+    }
     if (durationOverridden) {
         SPDLOG_INFO("Duration: {} ms (scenario override)", duration);
     } else {
@@ -211,91 +310,90 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    // --- Create scheduler based on user choice ---
-    std::unique_ptr<IScheduler> scheduler;
+    std::filesystem::path baseOutputPath(outputPath);
+    int failures = 0;
 
-    if (policyName == "fcfs")
-        scheduler = std::make_unique<FCFSScheduler>();
-    // TODO: implement other schedulers
-    // else if (policyName == "sjf") scheduler = std::make_unique<SJFScheduler>();
-    // else if (policyName == "srtf") scheduler = std::make_unique<SRTFScheduler>();
-    // else if (policyName == "rr") scheduler = std::make_unique<RRScheduler>();
-    // else if (policyName == "priority") scheduler = std::make_unique<PriorityScheduler>();
-    // else if (policyName == "mlfq") scheduler = std::make_unique<MLFQScheduler>();
-    // else if (policyName == "edf") scheduler = std::make_unique<EDFScheduler>();
-    else {
-        SPDLOG_ERROR("Unknown scheduler policy '{}'", policyName);
-        return 1;
-    }
+    for (const auto& policy : policies) {
+        SPDLOG_INFO("--- Running policy '{}' ---", policy);
 
-    // --- Create simulation engine ---
-    SPDLOG_INFO("Instantiating simulation engine with scheduler policy {}", policyName);
-    SimulationEngine engine(std::move(scheduler));
-
-    try {
-        SPDLOG_TRACE("Configuring scenario");
-        engine.configureScenario(scenarioConfig, static_cast<uint64_t>(duration));
-        SPDLOG_TRACE("Scenario configuration completed");
-    } catch (const std::exception& e) {
-        SPDLOG_ERROR("Scenario configuration failed: {}", e.what());
-        return 1;
-    }
-
-    try {
-        SPDLOG_TRACE("Loading workload into engine");
-        engine.loadWorkload(workloadConfig, static_cast<uint64_t>(duration));
-        SPDLOG_TRACE("Workload load completed");
-    } catch (const std::exception& e) {
-        SPDLOG_ERROR("Workload loading failed: {}", e.what());
-        return 1;
-    }
-
-    // Run simulation
-    SPDLOG_INFO("Running simulation for {} ms", duration);
-    try {
-        SPDLOG_TRACE("Starting engine.run");
-        // Run the simulation
-        engine.run(duration);
-        SPDLOG_TRACE("engine.run completed successfully");
-    } catch (const std::exception& e) {
-        SPDLOG_ERROR("Simulation run failed: {}", e.what());
-        return 1;
-    }
-
-    // Export metrics and timeline
-    json results;
-    try {
-        results = engine.metrics().buildReport();
-        SPDLOG_TRACE("Exported metrics payload size: {} bytes", results.dump().size());
-    } catch (const std::exception& e) {
-        SPDLOG_ERROR("Exporting metrics failed: {}", e.what());
-        return 1;
-    }
-
-    try {
-        // if the output directory does not exist, create it
-        std::filesystem::path outPath(outputPath);
-        if (outPath.has_parent_path() && !std::filesystem::exists(outPath.parent_path())) {
-            SPDLOG_TRACE("Creating output directories: {}", outPath.parent_path().string());
-            std::filesystem::create_directories(outPath.parent_path());
+        auto scheduler = createScheduler(policy);
+        if (!scheduler) {
+            SPDLOG_ERROR("Unknown scheduler policy '{}'", policy);
+            ++failures;
+            continue;
         }
-        SPDLOG_TRACE("Writing results to '{}'", outputPath);
-        std::ofstream outFile(outputPath);
-        if (!outFile) {
-            SPDLOG_ERROR("Failed to open output file '{}'", outputPath);
-            return 1;
+
+        SimulationEngine engine(std::move(scheduler));
+
+        try {
+            SPDLOG_TRACE("Configuring scenario");
+            engine.configureScenario(scenarioConfig, static_cast<uint64_t>(duration));
+            SPDLOG_TRACE("Scenario configuration completed");
+        } catch (const std::exception& e) {
+            SPDLOG_ERROR("Scenario configuration failed for policy '{}': {}", policy, e.what());
+            ++failures;
+            continue;
         }
-        outFile << std::setw(2) << results;
-    } catch (const std::exception& e) {
-        SPDLOG_ERROR("Writing results failed: {}", e.what());
-        return 1;
+
+        try {
+            SPDLOG_TRACE("Loading workload into engine");
+            engine.loadWorkload(workloadConfig, static_cast<uint64_t>(duration));
+            SPDLOG_TRACE("Workload load completed");
+        } catch (const std::exception& e) {
+            SPDLOG_ERROR("Workload loading failed for policy '{}': {}", policy, e.what());
+            ++failures;
+            continue;
+        }
+
+        SPDLOG_INFO("Running simulation for {} ms", duration);
+        try {
+            SPDLOG_TRACE("Starting engine.run (policy '{}')", policy);
+            engine.run(duration);
+            SPDLOG_TRACE("engine.run completed successfully (policy '{}')", policy);
+        } catch (const std::exception& e) {
+            SPDLOG_ERROR("Simulation run failed for policy '{}': {}", policy, e.what());
+            ++failures;
+            continue;
+        }
+
+        json results;
+        try {
+            results = engine.metrics().buildReport();
+            SPDLOG_TRACE("Exported metrics payload size (policy '{}'): {} bytes", policy, results.dump().size());
+        } catch (const std::exception& e) {
+            SPDLOG_ERROR("Exporting metrics failed for policy '{}': {}", policy, e.what());
+            ++failures;
+            continue;
+        }
+
+        std::filesystem::path outputPathForPolicy = deriveOutputPath(baseOutputPath, policy, multiPolicy);
+
+        try {
+            if (outputPathForPolicy.has_parent_path() && !std::filesystem::exists(outputPathForPolicy.parent_path())) {
+                SPDLOG_TRACE("Creating output directories: {}", outputPathForPolicy.parent_path().string());
+                std::filesystem::create_directories(outputPathForPolicy.parent_path());
+            }
+            SPDLOG_TRACE("Writing results to '{}'", outputPathForPolicy.string());
+            std::ofstream outFile(outputPathForPolicy);
+            if (!outFile) {
+                SPDLOG_ERROR("Failed to open output file '{}'", outputPathForPolicy.string());
+                ++failures;
+                continue;
+            }
+            outFile << std::setw(2) << results;
+        } catch (const std::exception& e) {
+            SPDLOG_ERROR("Writing results failed for policy '{}': {}", policy, e.what());
+            ++failures;
+            continue;
+        }
+
+        SPDLOG_INFO("Simulation complete. Results saved to {}", outputPathForPolicy.string());
     }
 
-    SPDLOG_INFO("Simulation complete. Results saved to {}", outputPath);
-
-    // if (verbose) {
-    //     SPDLOG_DEBUG("{}", results.dump(2));
-    // }
+    if (failures != 0) {
+        SPDLOG_ERROR("{} scheduling run(s) failed", failures);
+        return 1;
+    }
 
     return 0;
 }

@@ -439,6 +439,22 @@ void SimulationEngine::handleEvent(const Event& e)
         }
         break;
 
+    case EventType::TIME_SLICE_EXPIRE:
+        SPDLOG_TRACE("Handling TIME_SLICE_EXPIRE for task {}", e.task ? e.task->name : "<null>");
+        if (e.task) {
+            for (auto& core : cores_) {
+                if (core.currentTask == e.task) {
+                    core.currentTask = nullptr;
+                    core.busyUntil = e.timestamp;
+                    core.idle = true;
+                    core.idleStart = e.timestamp;
+                }
+            }
+            e.task->state = TaskState::READY;
+            scheduler_->onTimeSliceExpired(*e.task);
+        }
+        break;
+
     case EventType::TIMER_TICK:
         SPDLOG_TRACE("Handling TIMER_TICK @ {} ms", e.timestamp);
         metrics_.recordTimerTick(e.timestamp, currentCoreAssignments(), tasks_, eventQueue_.size());
@@ -464,25 +480,37 @@ void SimulationEngine::dispatchTasks()
                 }
                 core.idle = false;
                 if (next->remainingTime == 0) {
-                    next->remainingTime = next->execTime.second ? next->execTime.second : 1;
+                    const uint64_t fallback = next->execTime.second ? next->execTime.second : (next->execTime.first ? next->execTime.first : 1);
+                    next->remainingTime = fallback;
                 }
 
+                const uint64_t requestedSlice = next->currentTimeSliceMs ? std::min(next->currentTimeSliceMs, next->remainingTime) : next->remainingTime;
+                const uint64_t runDuration = std::max<uint64_t>(1, std::min(requestedSlice, next->remainingTime));
+                uint64_t remainingAfter = next->remainingTime > runDuration ? next->remainingTime - runDuration : 0;
+
                 next->state = TaskState::RUNNING;
+                next->currentTimeSliceMs = 0;
+                next->lastRunDurationMs = runDuration;
+                next->remainingTime = remainingAfter;
+
                 core.currentTask = next;
-                core.busyUntil = currentTime_ + next->remainingTime;
+                core.busyUntil = currentTime_ + runDuration;
 
                 metrics_.recordTaskDispatch(*next, coreIndex, currentTime_, core.busyUntil, contextSwitchCostUs_);
 
-                Event completion(EventType::TASK_COMPLETION, core.busyUntil, next);
+                EventType completionType = remainingAfter == 0 ? EventType::TASK_COMPLETION : EventType::TIME_SLICE_EXPIRE;
+                Event completion(completionType, core.busyUntil, next);
                 eventQueue_.push(completion);
 
-                SPDLOG_DEBUG("Dispatching task {} on core {} -> finishes @ {}",
+                SPDLOG_DEBUG("Dispatching task {} on core {} for {} ms -> completes@ {} (remaining {})",
                     next->name,
                     coreIndex,
-                    core.busyUntil);
+                    runDuration,
+                    core.busyUntil,
+                    remainingAfter);
 
                 if (verbose_)
-                    log("Dispatching task " + next->name + " -> finishes @ " + std::to_string(core.busyUntil));
+                    log("Dispatching task " + next->name + " for " + std::to_string(runDuration) + "ms -> finishes @ " + std::to_string(core.busyUntil));
             } else {
                 SPDLOG_TRACE("Core {} idle at {} ms (no task available)", coreIndex, currentTime_);
                 core.currentTask = nullptr;
