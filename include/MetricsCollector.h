@@ -1,63 +1,136 @@
 #pragma once
 
-#include <unordered_map>
-#include <vector>
+#include <cstdint>
+#include <optional>
 #include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include <nlohmann/json.hpp>
+
 #include "Task.h"
 
 using json = nlohmann::json;
 
 /**
- * @brief Collects performance data and simulation timeline.
+ * @brief Collects performance data, timeline traces, and aggregate metrics
+ *        for a simulation execution.
  */
 class MetricsCollector {
 public:
-    struct Record {
-        uint64_t startTime;
-        uint64_t endTime;
-        int taskId;
-        std::string name;
-        std::string event;
+    struct TimelineEvent {
+        uint64_t start = 0;
+        uint64_t end = 0;
+        int taskId = -1;
+        std::string taskName;
+        std::string eventType;
+        std::optional<size_t> coreIndex;
+        json metadata = json::object();
     };
 
-    void recordArrival(int id, uint64_t time) {
-        timeline_.push_back({time, time, id, "task_" + std::to_string(id), "arrival"});
-    }
+    struct TickSample {
+        uint64_t timestamp = 0;
+        size_t totalTasks = 0;
+        size_t readyTasks = 0;
+        size_t runningTasks = 0;
+        size_t waitingTasks = 0;
+        size_t completedTasks = 0;
+        size_t coresBusy = 0;
+        size_t coresTotal = 0;
+        size_t pendingEvents = 0;
+        std::vector<int> coreAssignments;
 
-    void recordDispatch(int id, uint64_t time) {
-        timeline_.push_back({time, time, id, "task_" + std::to_string(id), "dispatch"});
-    }
+        json toJson() const;
+    };
 
-    void recordCompletion(int id, uint64_t time) {
-        timeline_.push_back({time, time, id, "task_" + std::to_string(id), "complete"});
-    }
+    struct TaskMetrics {
+        int id = -1;
+        std::string name;
+        std::string taskClass;
+        int priority = 0;
+        uint64_t requestedExecMin = 0;
+        uint64_t requestedExecMax = 0;
+        uint64_t deadline = 0;
 
-    void finalize(uint64_t simEnd) {
-        totalSimTime_ = simEnd;
-    }
+        uint64_t arrivalTime = 0;
+        uint64_t firstDispatchTime = 0;
+        uint64_t completionTime = 0;
+        uint64_t totalRuntime = 0;
+        uint64_t totalWaitTime = 0;
+        uint32_t dispatchCount = 0;
+        TaskState finalState = TaskState::NEW;
 
-    json toJson() const {
-        json j;
-        j["total_sim_time_ms"] = totalSimTime_;
-        j["num_events"] = timeline_.size();
-        return j;
-    }
+        uint64_t lastDispatchStart = 0;
+        uint64_t lastStateChangeTime = 0;
+        bool arrivalRecorded = false;
 
-    json exportTimeline() const {
-        json arr = json::array();
-        for (const auto& r : timeline_) {
-            arr.push_back({
-                {"task_id", r.taskId},
-                {"name", r.name},
-                {"event", r.event},
-                {"time", r.startTime}
-            });
-        }
-        return arr;
-    }
+        void resetDynamic();
+    };
+
+    struct Counters {
+        uint64_t taskArrivals = 0;
+        uint64_t taskDispatches = 0;
+        uint64_t taskCompletions = 0;
+        uint64_t ioCompletions = 0;
+        uint64_t contextSwitches = 0;
+        uint64_t coreIdleSamples = 0;
+        uint64_t timerTicks = 0;
+    };
+
+    MetricsCollector() = default;
+
+    void reset();
+
+    void setScenarioMetadata(json metadata);
+    void setWorkloadMetadata(json metadata);
+
+    void registerTaskDefinition(const Task& task);
+
+    void startSimulation(uint64_t startTimeMs);
+
+    void recordTaskArrival(const Task& task, uint64_t timeMs);
+    void recordTaskDispatch(const Task& task,
+        size_t coreIndex,
+        uint64_t startTimeMs,
+        uint64_t expectedFinishMs,
+        uint64_t contextSwitchCostUs);
+    void recordTaskCompletion(const Task& task, uint64_t timeMs);
+    void recordIoCompletion(const Task& task, uint64_t timeMs);
+    void recordCoreIdle(size_t coreIndex, uint64_t timeMs);
+    void recordTimerTick(uint64_t timeMs,
+        const std::vector<int>& coreAssignments,
+        const std::vector<Task>& tasks,
+        size_t pendingEvents);
+
+    void finalize(uint64_t simEndTimeMs);
+
+    [[nodiscard]] const Counters& counters() const noexcept { return counters_; }
+    [[nodiscard]] const std::unordered_map<int, TaskMetrics>& taskMetrics() const noexcept { return taskStats_; }
+    [[nodiscard]] const std::vector<TimelineEvent>& timeline() const noexcept { return timeline_; }
+    [[nodiscard]] const std::vector<TickSample>& tickSamples() const noexcept { return tickSamples_; }
+
+    json buildReport() const;
+    json timelineJson() const;
+    json ticksJson() const;
 
 private:
-    std::vector<Record> timeline_;
-    uint64_t totalSimTime_ = 0;
+    TaskMetrics& ensureTaskMetrics(int taskId, const Task& task);
+    void appendTimelineEvent(TimelineEvent event);
+
+    std::vector<TimelineEvent> timeline_;
+    std::vector<TickSample> tickSamples_;
+    std::vector<json> taskDefinitions_;
+    std::unordered_map<int, size_t> taskDefinitionIndex_;
+    std::unordered_map<int, TaskMetrics> taskStats_;
+
+    Counters counters_{};
+    uint64_t simulationStartMs_ = 0;
+    uint64_t totalSimTimeMs_ = 0;
+    double cpuUtilAccumulator_ = 0.0;
+    size_t cpuUtilSamples_ = 0;
+
+    json scenarioMetadata_ = json::object();
+    json workloadMetadata_ = json::object();
 };
+
