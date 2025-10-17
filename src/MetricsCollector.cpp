@@ -76,6 +76,7 @@ void MetricsCollector::reset()
     cpuUtilSamples_ = 0;
     scenarioMetadata_ = json::object();
     workloadMetadata_ = json::object();
+    coreIdleTimeMs_.clear();
 }
 
 void MetricsCollector::setScenarioMetadata(json metadata)
@@ -86,6 +87,11 @@ void MetricsCollector::setScenarioMetadata(json metadata)
 void MetricsCollector::setWorkloadMetadata(json metadata)
 {
     workloadMetadata_ = std::move(metadata);
+}
+
+void MetricsCollector::setCoreCount(size_t cores)
+{
+    coreIdleTimeMs_.assign(cores, 0);
 }
 
 void MetricsCollector::registerTaskDefinition(const Task& task)
@@ -124,6 +130,7 @@ void MetricsCollector::startSimulation(uint64_t startTimeMs)
     counters_ = {};
     cpuUtilAccumulator_ = 0.0;
     cpuUtilSamples_ = 0;
+    std::fill(coreIdleTimeMs_.begin(), coreIdleTimeMs_.end(), 0);
 
     for (auto& [_, stats] : taskStats_) {
         stats.resetDynamic();
@@ -248,16 +255,30 @@ void MetricsCollector::recordIoCompletion(const Task& task, uint64_t timeMs)
     appendTimelineEvent(std::move(event));
 }
 
-void MetricsCollector::recordCoreIdle(size_t coreIndex, uint64_t timeMs)
+void MetricsCollector::recordCoreIdle(size_t coreIndex, uint64_t startTimeMs, uint64_t endTimeMs)
 {
-    counters_.coreIdleSamples++;
+    if (endTimeMs <= startTimeMs) {
+        return;
+    }
+
+    if (coreIndex >= coreIdleTimeMs_.size()) {
+        coreIdleTimeMs_.resize(coreIndex + 1, 0);
+    }
+
+    const uint64_t duration = endTimeMs - startTimeMs;
+    coreIdleTimeMs_[coreIndex] += duration;
+
+    counters_.coreIdleSpans++;
+    counters_.coreIdleTotalMs += duration;
 
     TimelineEvent event;
-    event.start = timeMs;
-    event.end = timeMs;
+    event.start = startTimeMs;
+    event.end = endTimeMs;
     event.eventType = "core_idle";
     event.coreIndex = coreIndex;
-    event.metadata = json::object();
+    event.metadata = {
+        { "duration_ms", duration }
+    };
 
     appendTimelineEvent(std::move(event));
 }
@@ -400,6 +421,8 @@ json MetricsCollector::buildReport() const
         { "average", avgUtil },
         { "samples", cpuUtilSamples_ }
     };
+    summary["core_idle_time_ms"] = coreIdleTimeMs_;
+    summary["total_idle_time_ms"] = counters_.coreIdleTotalMs;
 
     report["summary"] = std::move(summary);
 
@@ -409,7 +432,8 @@ json MetricsCollector::buildReport() const
         { "task_completions", counters_.taskCompletions },
         { "io_completions", counters_.ioCompletions },
         { "context_switches", counters_.contextSwitches },
-        { "core_idle_samples", counters_.coreIdleSamples },
+        { "core_idle_spans", counters_.coreIdleSpans },
+        { "core_idle_time_ms", counters_.coreIdleTotalMs },
         { "timer_ticks", counters_.timerTicks }
     };
 

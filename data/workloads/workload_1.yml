@@ -16,7 +16,7 @@ tasks:
     class: rt
     period_ms: 10
     deadline_ms: 10
-    exec_ms: { min: 0.5, max: 1.2 }
+    exec_ms: { min: 2, max: 4 }
     priority: 1
     start_ms: 0
     jitter_percent: 5
@@ -25,7 +25,7 @@ tasks:
     class: rt
     period_ms: 5
     deadline_ms: 5
-    exec_ms: { min: 0.3, max: 0.8 }
+    exec_ms: { min: 1, max: 2 }
     priority: 2
     start_ms: 0
     jitter_percent: 3
@@ -34,7 +34,7 @@ tasks:
     class: rt
     period_ms: 16
     deadline_ms: 16
-    exec_ms: { min: 0.6, max: 1.0 }
+    exec_ms: { min: 2, max: 3 }
     priority: 3
     start_ms: 0
     jitter_percent: 2
@@ -43,7 +43,7 @@ tasks:
     class: rt
     period_ms: 20
     deadline_ms: 20
-    exec_ms: { min: 1.0, max: 1.5 }
+    exec_ms: { min: 3, max: 5 }
     priority: 4
     start_ms: 500
     jitter_percent: 10
@@ -54,7 +54,7 @@ tasks:
   - name: "ui_input_handler"
     class: interactive
     arrival_pattern: { type: poisson, mean_ms: 250 }
-    exec_ms: { min: 1, max: 3 }
+    exec_ms: { min: 2, max: 4 }
     deadline_ms: 100
     priority: 6
     start_ms: 0
@@ -62,7 +62,7 @@ tasks:
   - name: "voice_assistant_query"
     class: interactive
     arrival_pattern: { type: burst, mean_interval_ms: 3000, burst_size: 5 }
-    exec_ms: { min: 20, max: 60 }
+    exec_ms: { min: 45, max: 90 }
     deadline_ms: 500
     priority: 5
     start_ms: 2000
@@ -70,7 +70,7 @@ tasks:
   - name: "screen_refresh"
     class: interactive
     period_ms: 33
-    exec_ms: { min: 0.7, max: 1.2 }
+    exec_ms: { min: 3, max: 6 }
     deadline_ms: 33
     priority: 7
     start_ms: 0
@@ -81,7 +81,7 @@ tasks:
   - name: "data_logger"
     class: background
     arrival_pattern: { type: periodic, period_ms: 5000 }
-    exec_ms: { min: 40, max: 120 }
+    exec_ms: { min: 60, max: 150 }
     io_wait_ms: { min: 200, max: 600 }
     priority: 8
     start_ms: 1000
@@ -89,7 +89,7 @@ tasks:
   - name: "wifi_sync"
     class: background
     arrival_pattern: { type: burst_every_s, value: 60, burst_count: 10 }
-    exec_ms: { min: 50, max: 200 }
+    exec_ms: { min: 80, max: 220 }
     io_wait_ms: { min: 100, max: 800 }
     priority: 9
     start_ms: 15000
@@ -97,7 +97,7 @@ tasks:
   - name: "firmware_update_check"
     class: background
     arrival_pattern: { type: periodic, period_ms: 30000 }
-    exec_ms: { min: 200, max: 500 }
+    exec_ms: { min: 240, max: 520 }
     io_wait_ms: { min: 200, max: 800 }
     priority: 9
     start_ms: 0
@@ -105,7 +105,7 @@ tasks:
   - name: "cache_maintenance"
     class: background
     arrival_pattern: { type: periodic, period_ms: 10000 }
-    exec_ms: { min: 100, max: 200 }
+    exec_ms: { min: 120, max: 220 }
     io_wait_ms: { min: 100, max: 200 }
     priority: 10
     start_ms: 0
@@ -116,21 +116,21 @@ tasks:
   - name: "temperature_monitor"
     class: background
     period_ms: 1000
-    exec_ms: { min: 1, max: 2 }
+    exec_ms: { min: 2, max: 3 }
     priority: 2
     start_ms: 0
 
   - name: "power_manager"
     class: background
     period_ms: 2000
-    exec_ms: { min: 1, max: 2 }
+    exec_ms: { min: 2, max: 4 }
     priority: 3
     start_ms: 0
 
   - name: "network_watchdog"
     class: background
     period_ms: 500
-    exec_ms: { min: 0.5, max: 1.0 }
+    exec_ms: { min: 2, max: 3 }
     priority: 2
     start_ms: 0
 
@@ -140,7 +140,7 @@ tasks:
   - name: "ml_cache_builder"
     class: background
     arrival_pattern: { type: periodic, period_ms: 60000 }
-    exec_ms: { min: 800, max: 1500 }
+    exec_ms: { min: 900, max: 1600 }
     io_wait_ms: { min: 200, max: 1000 }
     priority: 10
     start_ms: 5000
@@ -148,7 +148,7 @@ tasks:
   - name: "system_log_uploader"
     class: background
     arrival_pattern: { type: periodic, period_ms: 90000 }
-    exec_ms: { min: 1000, max: 3000 }
+    exec_ms: { min: 1200, max: 3200 }
     io_wait_ms: { min: 500, max: 1500 }
     priority: 10
     start_ms: 8000

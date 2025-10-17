@@ -74,7 +74,8 @@ public:
         uint64_t taskCompletions = 0;
         uint64_t ioCompletions = 0;
         uint64_t contextSwitches = 0;
-        uint64_t coreIdleSamples = 0;
+        uint64_t coreIdleSpans = 0;
+        uint64_t coreIdleTotalMs = 0;
         uint64_t timerTicks = 0;
     };
 
@@ -84,6 +85,7 @@ public:
 
     void setScenarioMetadata(json metadata);
     void setWorkloadMetadata(json metadata);
+    void setCoreCount(size_t cores);
 
     void registerTaskDefinition(const Task& task);
 
@@ -97,7 +99,7 @@ public:
         uint64_t contextSwitchCostUs);
     void recordTaskCompletion(const Task& task, uint64_t timeMs);
     void recordIoCompletion(const Task& task, uint64_t timeMs);
-    void recordCoreIdle(size_t coreIndex, uint64_t timeMs);
+    void recordCoreIdle(size_t coreIndex, uint64_t startTimeMs, uint64_t endTimeMs);
     void recordTimerTick(uint64_t timeMs,
         const std::vector<int>& coreAssignments,
         const std::vector<Task>& tasks,
@@ -123,6 +125,7 @@ private:
     std::vector<json> taskDefinitions_;
     std::unordered_map<int, size_t> taskDefinitionIndex_;
     std::unordered_map<int, TaskMetrics> taskStats_;
+    std::vector<uint64_t> coreIdleTimeMs_;
 
     Counters counters_{};
     uint64_t simulationStartMs_ = 0;
@@ -133,4 +136,3 @@ private:
     json scenarioMetadata_ = json::object();
     json workloadMetadata_ = json::object();
 };
-

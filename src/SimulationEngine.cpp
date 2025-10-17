@@ -12,6 +12,159 @@
 
 using namespace simcfg;
 
+namespace {
+
+uint64_t optionalNumberToUint(const std::optional<double>& value, uint64_t fallback)
+{
+    if (!value) {
+        return fallback;
+    }
+    const double raw = *value;
+    if (raw < 0.0) {
+        return fallback;
+    }
+    return static_cast<uint64_t>(std::llround(raw));
+}
+
+uint64_t applyJitterPercent(uint64_t baseTimeMs, uint64_t jitterPercent, size_t occurrenceIndex, uint64_t periodMs)
+{
+    if (jitterPercent == 0 || periodMs == 0) {
+        return baseTimeMs;
+    }
+    uint64_t swing = (periodMs * jitterPercent) / 100;
+    if (swing == 0) {
+        swing = 1;
+    }
+    const int64_t sign = (occurrenceIndex % 2 == 0) ? -1 : 1;
+    int64_t jittered = static_cast<int64_t>(baseTimeMs) + sign * static_cast<int64_t>(swing / 2);
+    if (jittered < 0) {
+        jittered = 0;
+    }
+    return static_cast<uint64_t>(jittered);
+}
+
+uint64_t selectExecDurationMs(const std::pair<uint64_t, uint64_t>& range, size_t occurrenceIndex)
+{
+    const uint64_t minMs = std::max<uint64_t>(1, range.first);
+    const uint64_t maxMs = std::max<uint64_t>(minMs, range.second);
+    if (maxMs == minMs) {
+        return minMs;
+    }
+    const uint64_t span = maxMs - minMs + 1;
+    const uint64_t offset = occurrenceIndex % span;
+    return minMs + offset;
+}
+
+std::vector<uint64_t> generateArrivalSchedule(const json& taskConfig, uint64_t horizonMs)
+{
+    std::vector<uint64_t> arrivals;
+    if (horizonMs == 0) {
+        return arrivals;
+    }
+
+    const uint64_t startMs = extractDurationMs(taskConfig, "start", extractDurationMs(taskConfig, "arrival", 0));
+    if (startMs > horizonMs) {
+        return arrivals;
+    }
+
+    const uint64_t jitterPercent = optionalNumberToUint(tryGetNumber(taskConfig, "jitter_percent"), 0);
+
+    const json* arrivalPattern = nullptr;
+    if (auto patternIt = taskConfig.find("arrival_pattern"); patternIt != taskConfig.end() && patternIt->is_object()) {
+        arrivalPattern = &(*patternIt);
+    }
+
+    auto readDurationMs = [&](const json& obj, std::string_view key, uint64_t fallback) {
+        if (auto asDuration = tryGetNumber(obj, key)) {
+            return optionalNumberToUint(asDuration, fallback);
+        }
+        return fallback;
+    };
+
+    auto appendArrival = [&](uint64_t timeMs) {
+        if (timeMs <= horizonMs) {
+            arrivals.push_back(timeMs);
+        }
+    };
+
+    if (arrivalPattern) {
+        const std::string patternType = arrivalPattern->value("type", std::string());
+        if (patternType == "burst") {
+            uint64_t intervalMs = readDurationMs(*arrivalPattern, "mean_interval_ms", 1000);
+            if (intervalMs == 0) {
+                intervalMs = 1;
+            }
+            const size_t burstSize = static_cast<size_t>(optionalNumberToUint(tryGetNumber(*arrivalPattern, "burst_size"), 1));
+            const uint64_t spacingMs = readDurationMs(*arrivalPattern, "burst_spacing_ms", 1);
+            uint64_t burstStart = startMs;
+            size_t burstIndex = 0;
+            while (burstStart <= horizonMs) {
+                for (size_t i = 0; i < burstSize; ++i) {
+                    appendArrival(burstStart + i * spacingMs);
+                }
+                ++burstIndex;
+                burstStart = startMs + intervalMs * burstIndex;
+                if (intervalMs == 0) {
+                    break;
+                }
+            }
+        } else if (patternType == "burst_every_s") {
+            uint64_t intervalMs = optionalNumberToUint(tryGetNumber(*arrivalPattern, "value"), 1) * 1000;
+            if (intervalMs == 0) {
+                intervalMs = 1000;
+            }
+            const size_t burstCount = static_cast<size_t>(optionalNumberToUint(tryGetNumber(*arrivalPattern, "burst_count"), 1));
+            const uint64_t spacingMs = readDurationMs(*arrivalPattern, "burst_spacing_ms", 1);
+            uint64_t burstStart = startMs;
+            size_t burstIndex = 0;
+            while (burstStart <= horizonMs) {
+                for (size_t i = 0; i < burstCount; ++i) {
+                    appendArrival(burstStart + i * spacingMs);
+                }
+                ++burstIndex;
+                burstStart = startMs + intervalMs * burstIndex;
+            }
+        } else {
+            uint64_t periodMs = extractDurationMs(taskConfig, "period", 0);
+            if (patternType == "periodic") {
+                periodMs = extractDurationMs(*arrivalPattern, "period", periodMs);
+            } else if (patternType == "poisson") {
+                periodMs = readDurationMs(*arrivalPattern, "mean_ms", periodMs ? periodMs : 50);
+            }
+            if (periodMs == 0) {
+                appendArrival(startMs);
+            } else {
+                uint64_t current = startMs;
+                size_t occurrence = 0;
+                while (current <= horizonMs) {
+                    appendArrival(applyJitterPercent(current, jitterPercent, occurrence, periodMs));
+                    ++occurrence;
+                    current = startMs + periodMs * occurrence;
+                }
+            }
+        }
+    } else {
+        uint64_t periodMs = extractDurationMs(taskConfig, "period", 0);
+        if (periodMs == 0) {
+            appendArrival(startMs);
+        } else {
+            uint64_t current = startMs;
+            size_t occurrence = 0;
+            while (current <= horizonMs) {
+                appendArrival(applyJitterPercent(current, jitterPercent, occurrence, periodMs));
+                ++occurrence;
+                current = startMs + periodMs * occurrence;
+            }
+        }
+    }
+
+    std::sort(arrivals.begin(), arrivals.end());
+    arrivals.erase(std::unique(arrivals.begin(), arrivals.end()), arrivals.end());
+    return arrivals;
+}
+
+} // namespace
+
 // ---------- Constructor ----------
 SimulationEngine::SimulationEngine(std::unique_ptr<IScheduler> scheduler)
     : scheduler_(std::move(scheduler))
@@ -25,7 +178,7 @@ SimulationEngine::SimulationEngine(std::unique_ptr<IScheduler> scheduler)
 }
 
 // ---------- Load Workload ----------
-void SimulationEngine::loadWorkload(const json& workloadConfig)
+void SimulationEngine::loadWorkload(const json& workloadConfig, uint64_t horizonMs)
 {
     if (!workloadConfig.contains("tasks") || !workloadConfig["tasks"].is_array()) {
         SPDLOG_WARN("Workload config missing 'tasks' array; skipping workload.");
@@ -33,58 +186,84 @@ void SimulationEngine::loadWorkload(const json& workloadConfig)
     }
 
     const auto& tasksArray = workloadConfig["tasks"];
-    tasks_.reserve(tasks_.size() + tasksArray.size());
 
-    uint64_t totalExecMinMs = 0;
-    uint64_t totalExecMaxMs = 0;
+    struct ExpandedTask {
+        const json* config = nullptr;
+        std::vector<uint64_t> arrivals;
+    };
 
-    for (const auto& t : tasksArray) {
-        if (!t.is_object()) {
-            SPDLOG_WARN("Skipping malformed task entry (expected object, got {})", t.type_name());
+    std::vector<ExpandedTask> expanded;
+    expanded.reserve(tasksArray.size());
+    size_t instanceCount = 0;
+
+    for (const auto& taskConfig : tasksArray) {
+        if (!taskConfig.is_object()) {
+            SPDLOG_WARN("Skipping malformed task entry (expected object, got {})", taskConfig.type_name());
             continue;
         }
+        auto arrivals = generateArrivalSchedule(taskConfig, horizonMs);
+        if (arrivals.empty()) {
+            continue;
+        }
+        instanceCount += arrivals.size();
+        expanded.push_back(ExpandedTask { &taskConfig, std::move(arrivals) });
+    }
 
-        Task task;
-        task.id = static_cast<int>(tasks_.size());
-        task.name = getStringOr(t, "name", "task_" + std::to_string(task.id));
-        task.type = getStringOr(t, "class", "background");
-        task.priority = getIntOr(t, "priority", 5);
-        task.arrivalTime = extractDurationMs(t, "start", extractDurationMs(t, "arrival", 0));
-        const auto execRange = extractDurationRangeMs(t, "exec", { 10u, 10u });
-        task.execTime = execRange;
-        task.deadline = extractDurationMs(t, "deadline", 0);
+    tasks_.clear();
+    tasks_.reserve(instanceCount);
+    eventQueue_ = std::priority_queue<Event, std::vector<Event>, EventCompare>();
 
-        task.remainingTime = task.execTime.second;
-        tasks_.push_back(task);
+    size_t templateCount = expanded.size();
+    uint64_t totalExecMs = 0;
 
-        Task& trackedTask = tasks_.back();
-        metrics_.registerTaskDefinition(trackedTask);
-        totalExecMinMs += trackedTask.execTime.first;
-        totalExecMaxMs += trackedTask.execTime.second;
+    for (const auto& entry : expanded) {
+        const json& taskConfig = *entry.config;
+        const std::vector<uint64_t>& arrivals = entry.arrivals;
 
-        SPDLOG_DEBUG("Loaded task id={} name={} arrival={}ms exec[min={}, max={}] priority={} class={}",
-            task.id,
-            task.name,
-            task.arrivalTime,
-            task.execTime.first,
-            task.execTime.second,
-            task.priority,
-            task.type);
+        const std::string baseName = getStringOr(taskConfig, "name", "task_template");
+        const std::string taskClass = getStringOr(taskConfig, "class", "background");
+        const int priority = getIntOr(taskConfig, "priority", 5);
+        const auto execRangeRaw = extractDurationRangeMs(taskConfig, "exec", { 5u, 5u });
+        const uint64_t deadlineMs = extractDurationMs(taskConfig, "deadline", 0);
 
-        Event arrival(EventType::TASK_ARRIVAL, task.arrivalTime, &tasks_.back());
-        eventQueue_.push(arrival);
-        SPDLOG_DEBUG("Queued TASK_ARRIVAL at {} ms for task {}", task.arrivalTime, task.name);
+        size_t occurrenceIndex = 0;
+        for (uint64_t arrivalMs : arrivals) {
+            const uint64_t execDurationMs = selectExecDurationMs(execRangeRaw, occurrenceIndex);
+
+            Task instance;
+            instance.id = static_cast<int>(tasks_.size());
+            instance.name = baseName + "#" + std::to_string(occurrenceIndex + 1);
+            instance.type = taskClass;
+            instance.priority = priority;
+            instance.arrivalTime = arrivalMs;
+            instance.execTime = { execDurationMs, execDurationMs };
+            instance.deadline = deadlineMs;
+            instance.remainingTime = execDurationMs;
+            instance.state = TaskState::NEW;
+
+            tasks_.push_back(instance);
+            Task& stored = tasks_.back();
+
+            metrics_.registerTaskDefinition(stored);
+            eventQueue_.push(Event(EventType::TASK_ARRIVAL, arrivalMs, &stored));
+
+            totalExecMs += execDurationMs;
+            ++occurrenceIndex;
+
+            SPDLOG_TRACE("Scheduled task '{}' arrival @ {} ms (exec={} ms)", stored.name, arrivalMs, execDurationMs);
+        }
     }
 
     metrics_.setWorkloadMetadata({
-        { "task_count", tasks_.size() },
-        { "total_requested_exec_min_ms", totalExecMinMs },
-        { "total_requested_exec_max_ms", totalExecMaxMs }
+        { "task_templates", templateCount },
+        { "task_instances", instanceCount },
+        { "total_requested_exec_ms", totalExecMs },
+        { "horizon_ms", horizonMs }
     });
 }
 
 // ---------- Configure Scenario ----------
-void SimulationEngine::configureScenario(const json& scenarioConfig)
+void SimulationEngine::configureScenario(const json& scenarioConfig, uint64_t plannedDurationMs)
 {
     const json schedulerCfg = scenarioConfig.value("scheduler", json::object());
     const json hardwareCfg = scenarioConfig.value("hardware", json::object());
@@ -97,6 +276,7 @@ void SimulationEngine::configureScenario(const json& scenarioConfig)
     basePowerWatts_ = tryGetNumber(systemCfg, "base_power_watts").value_or(basePowerWatts_);
     maxPowerWatts_ = tryGetNumber(systemCfg, "max_power_watts").value_or(maxPowerWatts_);
     idlePowerWatts_ = tryGetNumber(systemCfg, "idle_power_watts").value_or(idlePowerWatts_);
+    plannedRunDurationMs_ = plannedDurationMs;
 
     auto resolveNumber = [&](std::initializer_list<std::pair<const json*, std::string_view>> sources) -> std::optional<double> {
         for (const auto& [obj, key] : sources) {
@@ -138,8 +318,11 @@ void SimulationEngine::configureScenario(const json& scenarioConfig)
     for (auto& core : cores_) {
         core.currentTask = nullptr;
         core.busyUntil = 0;
+        core.idle = true;
+        core.idleStart = currentTime_;
     }
 
+    metrics_.setCoreCount(numCores_);
     metrics_.setScenarioMetadata({
         { "system_name", systemName_ },
         { "clock_speed_mhz", clockSpeedMhz_ },
@@ -150,7 +333,8 @@ void SimulationEngine::configureScenario(const json& scenarioConfig)
         { "context_switch_cost_us", contextSwitchCostUs_ },
         { "tick_interval_us", tickIntervalUs_ },
         { "io_completion_quantum_us", ioCompletionQuantumUs_ },
-        { "verbose_logging", verbose_ }
+        { "verbose_logging", verbose_ },
+        { "planned_run_duration_ms", plannedRunDurationMs_ }
     });
 
     SPDLOG_INFO("Scenario configured: system='{}', cores={}, context_switch_cost_us={}, tick_interval_us={}, io_quantum_us={}, verbose={}",
@@ -167,8 +351,15 @@ void SimulationEngine::run(uint64_t durationMs)
 {
     SPDLOG_INFO("[Engine] Starting simulation ({} ms)", durationMs);
     currentTime_ = 0;
+    plannedRunDurationMs_ = durationMs;
 
     metrics_.startSimulation(currentTime_);
+    for (auto& core : cores_) {
+        core.idle = true;
+        core.idleStart = currentTime_;
+        core.currentTask = nullptr;
+        core.busyUntil = currentTime_;
+    }
 
     if (tickIntervalMs_ != 0) {
         scheduleTimerTick(currentTime_);
@@ -184,15 +375,26 @@ void SimulationEngine::run(uint64_t durationMs)
             currentTime_,
             static_cast<int>(e.type),
             e.task ? e.task->name : "<null>");
-        handleEvent(e);
-
-        dispatchTasks();
+        try {
+            handleEvent(e);
+            dispatchTasks();
+        } catch (const std::exception& ex) {
+            SPDLOG_ERROR("Exception while processing event at {} ms: {}", currentTime_, ex.what());
+            throw;
+        }
     }
 
     // Wrap up
     SPDLOG_INFO("[Engine] Simulation complete at {} ms", currentTime_);
     scheduler_->printStats();
-    metrics_.finalize(currentTime_);
+    const uint64_t finalTime = std::max(currentTime_, plannedRunDurationMs_);
+    for (size_t coreIndex = 0; coreIndex < cores_.size(); ++coreIndex) {
+        auto& core = cores_[coreIndex];
+        if (core.idle && core.idleStart < finalTime) {
+            metrics_.recordCoreIdle(coreIndex, core.idleStart, finalTime);
+        }
+    }
+    metrics_.finalize(finalTime);
 }
 
 // ---------- Handle Events ----------
@@ -219,6 +421,8 @@ void SimulationEngine::handleEvent(const Event& e)
                 if (core.currentTask == e.task) {
                     core.currentTask = nullptr;
                     core.busyUntil = e.timestamp;
+                    core.idle = true;
+                    core.idleStart = e.timestamp;
                 }
             }
 
@@ -255,6 +459,10 @@ void SimulationEngine::dispatchTasks()
         if (core.currentTask == nullptr || core.busyUntil <= currentTime_) {
             Task* next = scheduler_->pickNextTask();
             if (next) {
+                if (core.idle && core.idleStart < currentTime_) {
+                    metrics_.recordCoreIdle(coreIndex, core.idleStart, currentTime_);
+                }
+                core.idle = false;
                 if (next->remainingTime == 0) {
                     next->remainingTime = next->execTime.second ? next->execTime.second : 1;
                 }
@@ -279,7 +487,10 @@ void SimulationEngine::dispatchTasks()
                 SPDLOG_TRACE("Core {} idle at {} ms (no task available)", coreIndex, currentTime_);
                 core.currentTask = nullptr;
                 core.busyUntil = currentTime_;
-                metrics_.recordCoreIdle(coreIndex, currentTime_);
+                if (!core.idle) {
+                    core.idle = true;
+                    core.idleStart = currentTime_;
+                }
             }
         }
     }

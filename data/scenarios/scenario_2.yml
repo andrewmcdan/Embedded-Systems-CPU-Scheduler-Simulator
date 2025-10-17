@@ -14,6 +14,7 @@ system:
   base_power_watts: 6.5
   max_power_watts: 15
   idle_power_watts: 1.2
+  run_duration_ms: 30000
 
 timing:
   context_switch_cost_us: 25

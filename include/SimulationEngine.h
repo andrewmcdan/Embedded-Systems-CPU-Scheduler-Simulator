@@ -28,8 +28,8 @@ public:
     explicit SimulationEngine(std::unique_ptr<IScheduler> scheduler);
 
     // Load workload and scenario configuration from JSON
-    void loadWorkload(const json& workloadConfig);
-    void configureScenario(const json& scenarioConfig);
+    void loadWorkload(const json& workloadConfig, uint64_t horizonMs);
+    void configureScenario(const json& scenarioConfig, uint64_t plannedDurationMs);
 
     // Run the full simulation for a given duration (ms)
     void run(uint64_t durationMs);
@@ -45,6 +45,8 @@ private:
     struct Core {
         Task* currentTask = nullptr;
         uint64_t busyUntil = 0;
+        bool idle = true;
+        uint64_t idleStart = 0;
     };
 
     std::unique_ptr<IScheduler> scheduler_;
@@ -58,6 +60,7 @@ private:
     uint64_t tickIntervalUs_ = 0;
     uint64_t tickIntervalMs_ = 0;
     uint64_t ioCompletionQuantumUs_ = 0;
+    uint64_t plannedRunDurationMs_ = 0;
     uint32_t numCores_ = 1;
     std::string systemName_ = "default";
     double clockSpeedMhz_ = 0.0;

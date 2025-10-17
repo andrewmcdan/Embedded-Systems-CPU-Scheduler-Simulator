@@ -10,6 +10,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <limits>
 
 // External libs
 #include <argparse/argparse.hpp>
@@ -24,6 +25,7 @@
 #include "Scheduler.h"
 #include "SimulationEngine.h"
 #include "Task.h"
+#include "ConfigUtils.h"
 
 using json = nlohmann::json;
 
@@ -164,14 +166,42 @@ int main(int argc, char* argv[])
     spdlog::set_level(verbose ? spdlog::level::trace : spdlog::level::info);
 
     SPDLOG_INFO("=== Embedded CPU Scheduler Simulation ===");
+
+    // --- Load scenario configuration (needed for duration override) ---
+    json scenarioConfig = json::object();
+    uint64_t scenarioRunDurationMs = 0;
+    try {
+        SPDLOG_INFO("Loading scenario config from {}", scenarioPath);
+        scenarioConfig = loadConfig(scenarioPath);
+        SPDLOG_TRACE("Scenario config loaded: {} keys", scenarioConfig.is_object() ? scenarioConfig.size() : 0);
+        const json systemCfg = scenarioConfig.value("system", json::object());
+        scenarioRunDurationMs = simcfg::extractDurationMs(systemCfg, "run_duration", 0);
+    } catch (const std::exception& e) {
+        SPDLOG_WARN("Failed to load scenario config '{}': {} (using defaults)", scenarioPath, e.what());
+        scenarioConfig = json::object();
+    }
+
+    bool durationOverridden = false;
+    if (!program.is_used("--duration") && scenarioRunDurationMs > 0) {
+        if (scenarioRunDurationMs > static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+            SPDLOG_WARN("Scenario run_duration ({}) exceeds supported CLI range; clamping to {}", scenarioRunDurationMs, std::numeric_limits<int>::max());
+            duration = std::numeric_limits<int>::max();
+        } else {
+            duration = static_cast<int>(scenarioRunDurationMs);
+        }
+        durationOverridden = true;
+    }
+
     SPDLOG_INFO("Policy: {}", policyName);
-    SPDLOG_INFO("Duration: {} ms", duration);
+    if (durationOverridden) {
+        SPDLOG_INFO("Duration: {} ms (scenario override)", duration);
+    } else {
+        SPDLOG_INFO("Duration: {} ms", duration);
+    }
     SPDLOG_INFO("Output: {}", outputPath);
 
-    // --- Load configuration files ---
+    // --- Load workload configuration ---
     json workloadConfig = json::object();
-    json scenarioConfig = json::object();
-
     try {
         SPDLOG_INFO("Loading workload config from {}", workloadPath);
         workloadConfig = loadConfig(workloadPath);
@@ -179,15 +209,6 @@ int main(int argc, char* argv[])
     } catch (const std::exception& e) {
         SPDLOG_ERROR("Failed to load workload config '{}': {}", workloadPath, e.what());
         return 1;
-    }
-
-    try {
-        SPDLOG_INFO("Loading scenario config from {}", scenarioPath);
-        scenarioConfig = loadConfig(scenarioPath);
-        SPDLOG_TRACE("Scenario config loaded: {} keys", scenarioConfig.is_object() ? scenarioConfig.size() : 0);
-    } catch (const std::exception& e) {
-        SPDLOG_WARN("Failed to load scenario config '{}': {} (using defaults)", scenarioPath, e.what());
-        scenarioConfig = json::object();
     }
 
     // --- Create scheduler based on user choice ---
@@ -212,20 +233,20 @@ int main(int argc, char* argv[])
     SimulationEngine engine(std::move(scheduler));
 
     try {
-        SPDLOG_TRACE("Loading workload into engine");
-        engine.loadWorkload(workloadConfig);
-        SPDLOG_TRACE("Workload load completed");
+        SPDLOG_TRACE("Configuring scenario");
+        engine.configureScenario(scenarioConfig, static_cast<uint64_t>(duration));
+        SPDLOG_TRACE("Scenario configuration completed");
     } catch (const std::exception& e) {
-        SPDLOG_ERROR("Workload loading failed: {}", e.what());
+        SPDLOG_ERROR("Scenario configuration failed: {}", e.what());
         return 1;
     }
 
     try {
-        SPDLOG_TRACE("Configuring scenario");
-        engine.configureScenario(scenarioConfig);
-        SPDLOG_TRACE("Scenario configuration completed");
+        SPDLOG_TRACE("Loading workload into engine");
+        engine.loadWorkload(workloadConfig, static_cast<uint64_t>(duration));
+        SPDLOG_TRACE("Workload load completed");
     } catch (const std::exception& e) {
-        SPDLOG_ERROR("Scenario configuration failed: {}", e.what());
+        SPDLOG_ERROR("Workload loading failed: {}", e.what());
         return 1;
     }
 
