@@ -113,36 +113,36 @@ namespace {
 
 std::string trimCopy(const std::string& value)
 {
-    const auto begin = std::find_if_not(value.begin(), value.end(), [](unsigned char ch) { return std::isspace(ch) != 0; });
-    const auto end = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char ch) { return std::isspace(ch) != 0; }).base();
-    if (begin >= end) {
+    const auto beginIterator = std::find_if_not(value.begin(), value.end(), [](unsigned char character) { return std::isspace(character) != 0; });
+    const auto endIterator = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char character) { return std::isspace(character) != 0; }).base();
+    if (beginIterator >= endIterator) {
         return std::string();
     }
-    return std::string(begin, end);
+    return std::string(beginIterator, endIterator);
 }
 
-std::string normalisePolicy(const std::string& raw)
+std::string normalisePolicy(const std::string& rawValue)
 {
-    std::string trimmed = trimCopy(raw);
-    std::transform(trimmed.begin(), trimmed.end(), trimmed.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
+    std::string trimmed = trimCopy(rawValue);
+    std::transform(trimmed.begin(), trimmed.end(), trimmed.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
     });
     return trimmed;
 }
 
-std::vector<std::string> parsePolicies(const std::string& raw)
+std::vector<std::string> parsePolicies(const std::string& rawPolicies)
 {
     std::vector<std::string> result;
-    std::stringstream ss(raw);
-    std::string token;
-    while (std::getline(ss, token, ',')) {
-        std::string normalised = normalisePolicy(token);
+    std::stringstream policyStream(rawPolicies);
+    std::string policyToken;
+    while (std::getline(policyStream, policyToken, ',')) {
+        std::string normalised = normalisePolicy(policyToken);
         if (!normalised.empty()) {
             result.push_back(normalised);
         }
     }
     if (result.empty()) {
-        std::string fallback = normalisePolicy(raw);
+        std::string fallback = normalisePolicy(rawPolicies);
         if (!fallback.empty()) {
             result.push_back(fallback);
         }

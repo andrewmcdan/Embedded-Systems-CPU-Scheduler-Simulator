@@ -70,7 +70,7 @@ private:
     bool verbose_ = false;
 
     // --- Internal helper functions ---
-    void handleEvent(const Event& e);
+    void handleEvent(const Event& eventRecord);
     void dispatchTasks();
     void scheduleNextEvent(Task& t);
     void log(const std::string& msg) const;

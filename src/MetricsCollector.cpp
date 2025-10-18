@@ -64,39 +64,39 @@ json MetricsCollector::TickSample::toJson() const
 
 void MetricsCollector::reset()
 {
-    timeline_.clear();
-    tickSamples_.clear();
-    taskDefinitions_.clear();
-    taskDefinitionIndex_.clear();
-    taskStats_.clear();
-    counters_ = {};
-    simulationStartMs_ = 0;
-    totalSimTimeMs_ = 0;
-    cpuUtilAccumulator_ = 0.0;
-    cpuUtilSamples_ = 0;
-    scenarioMetadata_ = json::object();
-    workloadMetadata_ = json::object();
-    coreIdleTimeMs_.clear();
+    this->timeline_.clear();
+    this->tickSamples_.clear();
+    this->taskDefinitions_.clear();
+    this->taskDefinitionIndex_.clear();
+    this->taskStats_.clear();
+    this->counters_ = {};
+    this->simulationStartMs_ = 0;
+    this->totalSimTimeMs_ = 0;
+    this->cpuUtilAccumulator_ = 0.0;
+    this->cpuUtilSamples_ = 0;
+    this->scenarioMetadata_ = json::object();
+    this->workloadMetadata_ = json::object();
+    this->coreIdleTimeMs_.clear();
 }
 
 void MetricsCollector::setScenarioMetadata(json metadata)
 {
-    scenarioMetadata_ = std::move(metadata);
+    this->scenarioMetadata_ = std::move(metadata);
 }
 
 void MetricsCollector::setWorkloadMetadata(json metadata)
 {
-    workloadMetadata_ = std::move(metadata);
+    this->workloadMetadata_ = std::move(metadata);
 }
 
 void MetricsCollector::setCoreCount(size_t cores)
 {
-    coreIdleTimeMs_.assign(cores, 0);
+    this->coreIdleTimeMs_.assign(cores, 0);
 }
 
 void MetricsCollector::registerTaskDefinition(const Task& task)
 {
-    auto& stats = ensureTaskMetrics(task.id, task);
+    auto& stats = this->ensureTaskMetrics(task.id, task);
     stats.resetDynamic();
 
     json definition = {
@@ -110,36 +110,36 @@ void MetricsCollector::registerTaskDefinition(const Task& task)
         { "deadline_ms", task.deadline }
     };
 
-    const auto defIt = taskDefinitionIndex_.find(task.id);
-    if (defIt == taskDefinitionIndex_.end()) {
-        const size_t index = taskDefinitions_.size();
-        taskDefinitions_.push_back(definition);
-        taskDefinitionIndex_.emplace(task.id, index);
+    const auto defIt = this->taskDefinitionIndex_.find(task.id);
+    if (defIt == this->taskDefinitionIndex_.end()) {
+        const size_t index = this->taskDefinitions_.size();
+        this->taskDefinitions_.push_back(definition);
+        this->taskDefinitionIndex_.emplace(task.id, index);
     } else {
-        taskDefinitions_[defIt->second] = definition;
+        this->taskDefinitions_[defIt->second] = definition;
     }
 
-    workloadMetadata_["task_count"] = taskStats_.size();
+    this->workloadMetadata_["task_count"] = this->taskStats_.size();
 }
 
 void MetricsCollector::startSimulation(uint64_t startTimeMs)
 {
-    simulationStartMs_ = startTimeMs;
-    timeline_.clear();
-    tickSamples_.clear();
-    counters_ = {};
-    cpuUtilAccumulator_ = 0.0;
-    cpuUtilSamples_ = 0;
-    std::fill(coreIdleTimeMs_.begin(), coreIdleTimeMs_.end(), 0);
+    this->simulationStartMs_ = startTimeMs;
+    this->timeline_.clear();
+    this->tickSamples_.clear();
+    this->counters_ = {};
+    this->cpuUtilAccumulator_ = 0.0;
+    this->cpuUtilSamples_ = 0;
+    std::fill(this->coreIdleTimeMs_.begin(), this->coreIdleTimeMs_.end(), 0);
 
-    for (auto& [_, stats] : taskStats_) {
+    for (auto& [taskKey, stats] : this->taskStats_) {
         stats.resetDynamic();
     }
 }
 
 void MetricsCollector::recordTaskArrival(const Task& task, uint64_t timeMs)
 {
-    auto& stats = ensureTaskMetrics(task.id, task);
+    auto& stats = this->ensureTaskMetrics(task.id, task);
     if (!stats.arrivalRecorded) {
         stats.arrivalTime = timeMs;
         stats.arrivalRecorded = true;
@@ -147,7 +147,7 @@ void MetricsCollector::recordTaskArrival(const Task& task, uint64_t timeMs)
     stats.lastStateChangeTime = timeMs;
     stats.finalState = TaskState::READY;
 
-    counters_.taskArrivals++;
+    this->counters_.taskArrivals++;
 
     TimelineEvent event;
     event.start = timeMs;
@@ -169,7 +169,7 @@ void MetricsCollector::recordTaskDispatch(const Task& task,
     uint64_t expectedFinishMs,
     uint64_t contextSwitchCostUs)
 {
-    auto& stats = ensureTaskMetrics(task.id, task);
+    auto& stats = this->ensureTaskMetrics(task.id, task);
 
     if (stats.arrivalRecorded && startTimeMs >= stats.lastStateChangeTime) {
         stats.totalWaitTime += startTimeMs - stats.lastStateChangeTime;
@@ -184,8 +184,8 @@ void MetricsCollector::recordTaskDispatch(const Task& task,
     stats.lastStateChangeTime = startTimeMs;
     stats.finalState = TaskState::RUNNING;
 
-    counters_.taskDispatches++;
-    counters_.contextSwitches++;
+    this->counters_.taskDispatches++;
+    this->counters_.contextSwitches++;
 
     TimelineEvent event;
     event.start = startTimeMs;
@@ -208,7 +208,7 @@ void MetricsCollector::recordTaskDispatch(const Task& task,
 
 void MetricsCollector::recordTaskCompletion(const Task& task, uint64_t timeMs)
 {
-    auto& stats = ensureTaskMetrics(task.id, task);
+    auto& stats = this->ensureTaskMetrics(task.id, task);
 
     if (timeMs >= stats.lastDispatchStart) {
         stats.totalRuntime += timeMs - stats.lastDispatchStart;
@@ -218,7 +218,7 @@ void MetricsCollector::recordTaskCompletion(const Task& task, uint64_t timeMs)
     stats.lastStateChangeTime = timeMs;
     stats.finalState = TaskState::COMPLETED;
 
-    counters_.taskCompletions++;
+    this->counters_.taskCompletions++;
 
     TimelineEvent event;
     event.start = timeMs;
@@ -236,11 +236,11 @@ void MetricsCollector::recordTaskCompletion(const Task& task, uint64_t timeMs)
 
 void MetricsCollector::recordIoCompletion(const Task& task, uint64_t timeMs)
 {
-    auto& stats = ensureTaskMetrics(task.id, task);
+    auto& stats = this->ensureTaskMetrics(task.id, task);
     stats.lastStateChangeTime = timeMs;
     stats.finalState = TaskState::READY;
 
-    counters_.ioCompletions++;
+    this->counters_.ioCompletions++;
 
     TimelineEvent event;
     event.start = timeMs;
@@ -261,15 +261,15 @@ void MetricsCollector::recordCoreIdle(size_t coreIndex, uint64_t startTimeMs, ui
         return;
     }
 
-    if (coreIndex >= coreIdleTimeMs_.size()) {
-        coreIdleTimeMs_.resize(coreIndex + 1, 0);
+    if (coreIndex >= this->coreIdleTimeMs_.size()) {
+        this->coreIdleTimeMs_.resize(coreIndex + 1, 0);
     }
 
     const uint64_t duration = endTimeMs - startTimeMs;
-    coreIdleTimeMs_[coreIndex] += duration;
+    this->coreIdleTimeMs_[coreIndex] += duration;
 
-    counters_.coreIdleSpans++;
-    counters_.coreIdleTotalMs += duration;
+    this->counters_.coreIdleSpans++;
+    this->counters_.coreIdleTotalMs += duration;
 
     TimelineEvent event;
     event.start = startTimeMs;
@@ -330,26 +330,26 @@ void MetricsCollector::recordTimerTick(uint64_t timeMs,
     sample.pendingEvents = pendingEvents;
     sample.coreAssignments = coreAssignments;
 
-    tickSamples_.push_back(sample);
+    this->tickSamples_.push_back(sample);
 
     const double util = sample.coresTotal == 0 ? 0.0 : static_cast<double>(sample.coresBusy) / static_cast<double>(sample.coresTotal);
-    cpuUtilAccumulator_ += util;
-    cpuUtilSamples_++;
+    this->cpuUtilAccumulator_ += util;
+    this->cpuUtilSamples_++;
 
-    counters_.timerTicks++;
+    this->counters_.timerTicks++;
 }
 
 void MetricsCollector::finalize(uint64_t simEndTimeMs)
 {
-    totalSimTimeMs_ = simEndTimeMs;
+    this->totalSimTimeMs_ = simEndTimeMs;
 }
 
 json MetricsCollector::buildReport() const
 {
     json report;
-    report["config"] = scenarioMetadata_;
-    report["workload"] = workloadMetadata_;
-    report["workload"]["tasks"] = taskDefinitions_;
+    report["config"] = this->scenarioMetadata_;
+    report["workload"] = this->workloadMetadata_;
+    report["workload"]["tasks"] = this->taskDefinitions_;
 
     json tasksArray = json::array();
     double totalWait = 0.0;
@@ -360,7 +360,7 @@ json MetricsCollector::buildReport() const
     size_t completedTasks = 0;
     size_t respondedTasks = 0;
 
-    for (const auto& [taskId, stats] : taskStats_) {
+    for (const auto& [taskId, stats] : this->taskStats_) {
         json entry = {
             { "task_id", taskId },
             { "name", stats.name },
@@ -403,12 +403,12 @@ json MetricsCollector::buildReport() const
     report["tasks"]["lifecycle"] = std::move(tasksArray);
 
     json summary;
-    summary["simulation_start_ms"] = simulationStartMs_;
-    summary["simulation_end_ms"] = totalSimTimeMs_;
-    summary["total_simulation_time_ms"] = totalSimTimeMs_ >= simulationStartMs_
-        ? totalSimTimeMs_ - simulationStartMs_
-        : totalSimTimeMs_;
-    summary["task_count"] = taskStats_.size();
+    summary["simulation_start_ms"] = this->simulationStartMs_;
+    summary["simulation_end_ms"] = this->totalSimTimeMs_;
+    summary["total_simulation_time_ms"] = this->totalSimTimeMs_ >= this->simulationStartMs_
+        ? this->totalSimTimeMs_ - this->simulationStartMs_
+        : this->totalSimTimeMs_;
+    summary["task_count"] = this->taskStats_.size();
     summary["completed_tasks"] = completedTasks;
 
     summary["average_wait_time_ms"] = waitSamples == 0 ? 0.0 : totalWait / static_cast<double>(waitSamples);
@@ -416,81 +416,81 @@ json MetricsCollector::buildReport() const
     summary["average_response_time_ms"] = respondedTasks == 0 ? 0.0 : totalResponse / static_cast<double>(respondedTasks);
     summary["average_runtime_ms"] = waitSamples == 0 ? 0.0 : totalRuntime / static_cast<double>(waitSamples);
 
-    const double avgUtil = cpuUtilSamples_ == 0 ? 0.0 : cpuUtilAccumulator_ / static_cast<double>(cpuUtilSamples_);
+    const double avgUtil = this->cpuUtilSamples_ == 0 ? 0.0 : this->cpuUtilAccumulator_ / static_cast<double>(this->cpuUtilSamples_);
     summary["cpu_utilization"] = {
         { "average", avgUtil },
-        { "samples", cpuUtilSamples_ }
+        { "samples", this->cpuUtilSamples_ }
     };
-    summary["core_idle_time_ms"] = coreIdleTimeMs_;
-    summary["total_idle_time_ms"] = counters_.coreIdleTotalMs;
+    summary["core_idle_time_ms"] = this->coreIdleTimeMs_;
+    summary["total_idle_time_ms"] = this->counters_.coreIdleTotalMs;
 
     report["summary"] = std::move(summary);
 
     report["counters"] = {
-        { "task_arrivals", counters_.taskArrivals },
-        { "task_dispatches", counters_.taskDispatches },
-        { "task_completions", counters_.taskCompletions },
-        { "io_completions", counters_.ioCompletions },
-        { "context_switches", counters_.contextSwitches },
-        { "core_idle_spans", counters_.coreIdleSpans },
-        { "core_idle_time_ms", counters_.coreIdleTotalMs },
-        { "timer_ticks", counters_.timerTicks }
+        { "task_arrivals", this->counters_.taskArrivals },
+        { "task_dispatches", this->counters_.taskDispatches },
+        { "task_completions", this->counters_.taskCompletions },
+        { "io_completions", this->counters_.ioCompletions },
+        { "context_switches", this->counters_.contextSwitches },
+        { "core_idle_spans", this->counters_.coreIdleSpans },
+        { "core_idle_time_ms", this->counters_.coreIdleTotalMs },
+        { "timer_ticks", this->counters_.timerTicks }
     };
 
-    report["timeline"] = timelineJson();
-    report["ticks"] = ticksJson();
+    report["timeline"] = this->timelineJson();
+    report["ticks"] = this->ticksJson();
 
     return report;
 }
 
 json MetricsCollector::timelineJson() const
 {
-    json arr = json::array();
+    json timelineArray = json::array();
 
-    for (const auto& event : timeline_) {
+    for (const auto& eventRecord : this->timeline_) {
         json entry = {
-            { "start_ms", event.start },
-            { "end_ms", event.end },
-            { "event", event.eventType },
-            { "metadata", event.metadata }
+            { "start_ms", eventRecord.start },
+            { "end_ms", eventRecord.end },
+            { "event", eventRecord.eventType },
+            { "metadata", eventRecord.metadata }
         };
 
-        if (event.taskId >= 0) {
-            entry["task_id"] = event.taskId;
+        if (eventRecord.taskId >= 0) {
+            entry["task_id"] = eventRecord.taskId;
         } else {
             entry["task_id"] = nullptr;
         }
 
-        if (!event.taskName.empty()) {
-            entry["task_name"] = event.taskName;
+        if (!eventRecord.taskName.empty()) {
+            entry["task_name"] = eventRecord.taskName;
         }
 
-        if (event.coreIndex.has_value()) {
-            entry["core"] = *event.coreIndex;
+        if (eventRecord.coreIndex.has_value()) {
+            entry["core"] = *eventRecord.coreIndex;
         } else {
             entry["core"] = nullptr;
         }
 
-        arr.push_back(std::move(entry));
+        timelineArray.push_back(std::move(entry));
     }
 
-    return arr;
+    return timelineArray;
 }
 
 json MetricsCollector::ticksJson() const
 {
-    json arr = json::array();
-    for (const auto& sample : tickSamples_) {
-        arr.push_back(sample.toJson());
+    json tickArray = json::array();
+    for (const auto& sample : this->tickSamples_) {
+        tickArray.push_back(sample.toJson());
     }
-    return arr;
+    return tickArray;
 }
 
 MetricsCollector::TaskMetrics& MetricsCollector::ensureTaskMetrics(int taskId, const Task& task)
 {
-    auto [it, inserted] = taskStats_.try_emplace(taskId);
-    TaskMetrics& stats = it->second;
-    if (inserted) {
+    auto [metricsIt, wasInserted] = this->taskStats_.try_emplace(taskId);
+    TaskMetrics& stats = metricsIt->second;
+    if (wasInserted) {
         stats.id = taskId;
         stats.name = task.name;
         stats.taskClass = task.type;
@@ -515,5 +515,5 @@ void MetricsCollector::appendTimelineEvent(TimelineEvent event)
     if (!event.metadata.is_object()) {
         event.metadata = json::object();
     }
-    timeline_.push_back(std::move(event));
+    this->timeline_.push_back(std::move(event));
 }

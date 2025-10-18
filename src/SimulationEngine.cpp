@@ -19,11 +19,11 @@ uint64_t optionalNumberToUint(const std::optional<double>& value, uint64_t fallb
     if (!value) {
         return fallback;
     }
-    const double raw = *value;
-    if (raw < 0.0) {
+    const double rawValue = *value;
+    if (rawValue < 0.0) {
         return fallback;
     }
-    return static_cast<uint64_t>(std::llround(raw));
+    return static_cast<uint64_t>(std::llround(rawValue));
 }
 
 uint64_t applyJitterPercent(uint64_t baseTimeMs, uint64_t jitterPercent, size_t occurrenceIndex, uint64_t periodMs)
@@ -169,12 +169,12 @@ std::vector<uint64_t> generateArrivalSchedule(const json& taskConfig, uint64_t h
 SimulationEngine::SimulationEngine(std::unique_ptr<IScheduler> scheduler)
     : scheduler_(std::move(scheduler))
 {
-    if (!scheduler_) {
+    if (!this->scheduler_) {
         throw std::invalid_argument("SimulationEngine requires a valid scheduler");
     }
-    cores_.resize(1); // default single-core
-    metrics_.reset();
-    SPDLOG_DEBUG("SimulationEngine initialized with {} core(s)", cores_.size());
+    this->cores_.resize(1); // default single-core
+    this->metrics_.reset();
+    SPDLOG_DEBUG("SimulationEngine initialized with {} core(s)", this->cores_.size());
 }
 
 // ---------- Load Workload ----------
@@ -209,9 +209,9 @@ void SimulationEngine::loadWorkload(const json& workloadConfig, uint64_t horizon
         expanded.push_back(ExpandedTask { &taskConfig, std::move(arrivals) });
     }
 
-    tasks_.clear();
-    tasks_.reserve(instanceCount);
-    eventQueue_ = std::priority_queue<Event, std::vector<Event>, EventCompare>();
+    this->tasks_.clear();
+    this->tasks_.reserve(instanceCount);
+    this->eventQueue_ = std::priority_queue<Event, std::vector<Event>, EventCompare>();
 
     size_t templateCount = expanded.size();
     uint64_t totalExecMs = 0;
@@ -231,7 +231,7 @@ void SimulationEngine::loadWorkload(const json& workloadConfig, uint64_t horizon
             const uint64_t execDurationMs = selectExecDurationMs(execRangeRaw, occurrenceIndex);
 
             Task instance;
-            instance.id = static_cast<int>(tasks_.size());
+            instance.id = static_cast<int>(this->tasks_.size());
             instance.name = baseName + "#" + std::to_string(occurrenceIndex + 1);
             instance.type = taskClass;
             instance.priority = priority;
@@ -241,11 +241,11 @@ void SimulationEngine::loadWorkload(const json& workloadConfig, uint64_t horizon
             instance.remainingTime = execDurationMs;
             instance.state = TaskState::NEW;
 
-            tasks_.push_back(instance);
-            Task& stored = tasks_.back();
+            this->tasks_.push_back(instance);
+            Task& stored = this->tasks_.back();
 
-            metrics_.registerTaskDefinition(stored);
-            eventQueue_.push(Event(EventType::TASK_ARRIVAL, arrivalMs, &stored));
+            this->metrics_.registerTaskDefinition(stored);
+            this->eventQueue_.push(Event(EventType::TASK_ARRIVAL, arrivalMs, &stored));
 
             totalExecMs += execDurationMs;
             ++occurrenceIndex;
@@ -254,7 +254,7 @@ void SimulationEngine::loadWorkload(const json& workloadConfig, uint64_t horizon
         }
     }
 
-    metrics_.setWorkloadMetadata({
+    this->metrics_.setWorkloadMetadata({
         { "task_templates", templateCount },
         { "task_instances", instanceCount },
         { "total_requested_exec_ms", totalExecMs },
@@ -271,12 +271,12 @@ void SimulationEngine::configureScenario(const json& scenarioConfig, uint64_t pl
     const json systemCfg = scenarioConfig.value("system", json::object());
     const json timingCfg = scenarioConfig.value("timing", json::object());
 
-    systemName_ = getStringOr(systemCfg, "name", systemName_);
-    clockSpeedMhz_ = tryGetNumber(systemCfg, "clock_speed_mhz").value_or(clockSpeedMhz_);
-    basePowerWatts_ = tryGetNumber(systemCfg, "base_power_watts").value_or(basePowerWatts_);
-    maxPowerWatts_ = tryGetNumber(systemCfg, "max_power_watts").value_or(maxPowerWatts_);
-    idlePowerWatts_ = tryGetNumber(systemCfg, "idle_power_watts").value_or(idlePowerWatts_);
-    plannedRunDurationMs_ = plannedDurationMs;
+    this->systemName_ = getStringOr(systemCfg, "name", this->systemName_);
+    this->clockSpeedMhz_ = tryGetNumber(systemCfg, "clock_speed_mhz").value_or(this->clockSpeedMhz_);
+    this->basePowerWatts_ = tryGetNumber(systemCfg, "base_power_watts").value_or(this->basePowerWatts_);
+    this->maxPowerWatts_ = tryGetNumber(systemCfg, "max_power_watts").value_or(this->maxPowerWatts_);
+    this->idlePowerWatts_ = tryGetNumber(systemCfg, "idle_power_watts").value_or(this->idlePowerWatts_);
+    this->plannedRunDurationMs_ = plannedDurationMs;
 
     auto resolveNumber = [&](std::initializer_list<std::pair<const json*, std::string_view>> sources) -> std::optional<double> {
         for (const auto& [obj, key] : sources) {
@@ -298,171 +298,171 @@ void SimulationEngine::configureScenario(const json& scenarioConfig, uint64_t pl
                                     })
                                       .value_or(1.0);
 
-    numCores_ = static_cast<size_t>(std::max<int>(1, static_cast<int>(std::llround(coresCandidate))));
+    this->numCores_ = static_cast<size_t>(std::max<int>(1, static_cast<int>(std::llround(coresCandidate))));
 
     const uint64_t scenarioContextSwitchUs = extractDurationUs(timingCfg, "context_switch_cost",
-        extractDurationUs(scenarioConfig, "context_switch_cost", contextSwitchCostUs_));
-    contextSwitchCostUs_ = extractDurationUs(schedulerCfg, "context_switch_cost", scenarioContextSwitchUs);
+        extractDurationUs(scenarioConfig, "context_switch_cost", this->contextSwitchCostUs_));
+    this->contextSwitchCostUs_ = extractDurationUs(schedulerCfg, "context_switch_cost", scenarioContextSwitchUs);
 
-    ioCompletionQuantumUs_ = extractDurationUs(timingCfg, "io_completion_quantum",
-        extractDurationUs(scenarioConfig, "io_completion_quantum", ioCompletionQuantumUs_));
-    tickIntervalUs_ = extractDurationUs(timingCfg, "tick_interval",
-        extractDurationUs(scenarioConfig, "tick_interval", tickIntervalUs_));
-    tickIntervalMs_ = tickIntervalUs_ == 0 ? 0 : std::max<uint64_t>(1, (tickIntervalUs_ + 999) / 1000);
+    this->ioCompletionQuantumUs_ = extractDurationUs(timingCfg, "io_completion_quantum",
+        extractDurationUs(scenarioConfig, "io_completion_quantum", this->ioCompletionQuantumUs_));
+    this->tickIntervalUs_ = extractDurationUs(timingCfg, "tick_interval",
+        extractDurationUs(scenarioConfig, "tick_interval", this->tickIntervalUs_));
+    this->tickIntervalMs_ = this->tickIntervalUs_ == 0 ? 0 : std::max<uint64_t>(1, (this->tickIntervalUs_ + 999) / 1000);
 
-    verbose_ = getBoolOr(schedulerCfg, "verbose",
+    this->verbose_ = getBoolOr(schedulerCfg, "verbose",
         getBoolOr(loggingCfg, "verbose",
             getBoolOr(scenarioConfig, "verbose", false)));
 
-    cores_.resize(numCores_);
-    for (auto& core : cores_) {
+    this->cores_.resize(this->numCores_);
+    for (auto& core : this->cores_) {
         core.currentTask = nullptr;
         core.busyUntil = 0;
         core.idle = true;
-        core.idleStart = currentTime_;
+        core.idleStart = this->currentTime_;
     }
 
-    metrics_.setCoreCount(numCores_);
-    metrics_.setScenarioMetadata({
-        { "system_name", systemName_ },
-        { "clock_speed_mhz", clockSpeedMhz_ },
-        { "base_power_watts", basePowerWatts_ },
-        { "max_power_watts", maxPowerWatts_ },
-        { "idle_power_watts", idlePowerWatts_ },
-        { "num_cores", numCores_ },
-        { "context_switch_cost_us", contextSwitchCostUs_ },
-        { "tick_interval_us", tickIntervalUs_ },
-        { "io_completion_quantum_us", ioCompletionQuantumUs_ },
-        { "verbose_logging", verbose_ },
-        { "planned_run_duration_ms", plannedRunDurationMs_ }
+    this->metrics_.setCoreCount(this->numCores_);
+    this->metrics_.setScenarioMetadata({
+        { "system_name", this->systemName_ },
+        { "clock_speed_mhz", this->clockSpeedMhz_ },
+        { "base_power_watts", this->basePowerWatts_ },
+        { "max_power_watts", this->maxPowerWatts_ },
+        { "idle_power_watts", this->idlePowerWatts_ },
+        { "num_cores", this->numCores_ },
+        { "context_switch_cost_us", this->contextSwitchCostUs_ },
+        { "tick_interval_us", this->tickIntervalUs_ },
+        { "io_completion_quantum_us", this->ioCompletionQuantumUs_ },
+        { "verbose_logging", this->verbose_ },
+        { "planned_run_duration_ms", this->plannedRunDurationMs_ }
     });
 
     SPDLOG_INFO("Scenario configured: system='{}', cores={}, context_switch_cost_us={}, tick_interval_us={}, io_quantum_us={}, verbose={}",
-        systemName_,
-        numCores_,
-        contextSwitchCostUs_,
-        tickIntervalUs_,
-        ioCompletionQuantumUs_,
-        verbose_);
+        this->systemName_,
+        this->numCores_,
+        this->contextSwitchCostUs_,
+        this->tickIntervalUs_,
+        this->ioCompletionQuantumUs_,
+        this->verbose_);
 }
 
 // ---------- Run Simulation ----------
 void SimulationEngine::run(uint64_t durationMs)
 {
     SPDLOG_INFO("[Engine] Starting simulation ({} ms)", durationMs);
-    currentTime_ = 0;
-    plannedRunDurationMs_ = durationMs;
+    this->currentTime_ = 0;
+    this->plannedRunDurationMs_ = durationMs;
 
-    metrics_.startSimulation(currentTime_);
-    for (auto& core : cores_) {
+    this->metrics_.startSimulation(this->currentTime_);
+    for (auto& core : this->cores_) {
         core.idle = true;
-        core.idleStart = currentTime_;
+        core.idleStart = this->currentTime_;
         core.currentTask = nullptr;
-        core.busyUntil = currentTime_;
+        core.busyUntil = this->currentTime_;
     }
 
-    if (tickIntervalMs_ != 0) {
-        scheduleTimerTick(currentTime_);
+    if (this->tickIntervalMs_ != 0) {
+        this->scheduleTimerTick(this->currentTime_);
     }
 
-    while (!eventQueue_.empty() && currentTime_ <= durationMs) {
-        Event e = eventQueue_.top();
-        eventQueue_.pop();
+    while (!this->eventQueue_.empty() && this->currentTime_ <= durationMs) {
+        Event scheduledEvent = this->eventQueue_.top();
+        this->eventQueue_.pop();
 
         // Advance simulation clock
-        currentTime_ = e.timestamp;
+        this->currentTime_ = scheduledEvent.timestamp;
         SPDLOG_DEBUG("Advancing to {} ms -> processing event type {} for task {}",
-            currentTime_,
-            static_cast<int>(e.type),
-            e.task ? e.task->name : "<null>");
+            this->currentTime_,
+            static_cast<int>(scheduledEvent.type),
+            scheduledEvent.task ? scheduledEvent.task->name : "<null>");
         try {
-            handleEvent(e);
+            this->handleEvent(scheduledEvent);
             dispatchTasks();
         } catch (const std::exception& ex) {
-            SPDLOG_ERROR("Exception while processing event at {} ms: {}", currentTime_, ex.what());
+            SPDLOG_ERROR("Exception while processing event at {} ms: {}", this->currentTime_, ex.what());
             throw;
         }
     }
 
     // Wrap up
-    SPDLOG_INFO("[Engine] Simulation complete at {} ms", currentTime_);
-    scheduler_->printStats();
-    const uint64_t finalTime = std::max(currentTime_, plannedRunDurationMs_);
-    for (size_t coreIndex = 0; coreIndex < cores_.size(); ++coreIndex) {
-        auto& core = cores_[coreIndex];
+    SPDLOG_INFO("[Engine] Simulation complete at {} ms", this->currentTime_);
+    this->scheduler_->printStats();
+    const uint64_t finalTime = std::max(this->currentTime_, this->plannedRunDurationMs_);
+    for (size_t coreIndex = 0; coreIndex < this->cores_.size(); ++coreIndex) {
+        auto& core = this->cores_[coreIndex];
         if (core.idle && core.idleStart < finalTime) {
-            metrics_.recordCoreIdle(coreIndex, core.idleStart, finalTime);
+            this->metrics_.recordCoreIdle(coreIndex, core.idleStart, finalTime);
         }
     }
-    metrics_.finalize(finalTime);
+    this->metrics_.finalize(finalTime);
 }
 
 // ---------- Handle Events ----------
-void SimulationEngine::handleEvent(const Event& e)
+void SimulationEngine::handleEvent(const Event& eventRecord)
 {
-    switch (e.type) {
+    switch (eventRecord.type) {
     case EventType::TASK_ARRIVAL:
-        SPDLOG_DEBUG("Handling TASK_ARRIVAL for task {}", e.task ? e.task->name : "<null>");
-        if (e.task) {
-            e.task->state = TaskState::READY;
-            metrics_.recordTaskArrival(*e.task, e.timestamp);
-            scheduler_->onTaskArrival(*e.task);
+        SPDLOG_DEBUG("Handling TASK_ARRIVAL for task {}", eventRecord.task ? eventRecord.task->name : "<null>");
+        if (eventRecord.task) {
+            eventRecord.task->state = TaskState::READY;
+            this->metrics_.recordTaskArrival(*eventRecord.task, eventRecord.timestamp);
+            this->scheduler_->onTaskArrival(*eventRecord.task);
         }
         break;
 
     case EventType::TASK_COMPLETION:
-        SPDLOG_DEBUG("Handling TASK_COMPLETION for task {}", e.task ? e.task->name : "<null>");
-        if (e.task) {
-            e.task->state = TaskState::COMPLETED;
-            e.task->remainingTime = 0;
-            metrics_.recordTaskCompletion(*e.task, e.timestamp);
+        SPDLOG_DEBUG("Handling TASK_COMPLETION for task {}", eventRecord.task ? eventRecord.task->name : "<null>");
+        if (eventRecord.task) {
+            eventRecord.task->state = TaskState::COMPLETED;
+            eventRecord.task->remainingTime = 0;
+            this->metrics_.recordTaskCompletion(*eventRecord.task, eventRecord.timestamp);
 
-            for (auto& core : cores_) {
-                if (core.currentTask == e.task) {
+            for (auto& core : this->cores_) {
+                if (core.currentTask == eventRecord.task) {
                     core.currentTask = nullptr;
-                    core.busyUntil = e.timestamp;
+                    core.busyUntil = eventRecord.timestamp;
                     core.idle = true;
-                    core.idleStart = e.timestamp;
+                    core.idleStart = eventRecord.timestamp;
                 }
             }
 
-            scheduler_->onTaskCompletion(*e.task);
+            this->scheduler_->onTaskCompletion(*eventRecord.task);
         }
         break;
 
     case EventType::IO_COMPLETION:
-        SPDLOG_DEBUG("Handling IO_COMPLETION for task {}", e.task ? e.task->name : "<null>");
-        if (e.task) {
-            e.task->state = TaskState::READY;
-            metrics_.recordIoCompletion(*e.task, e.timestamp);
-            scheduler_->onIOCompletion(*e.task);
+        SPDLOG_DEBUG("Handling IO_COMPLETION for task {}", eventRecord.task ? eventRecord.task->name : "<null>");
+        if (eventRecord.task) {
+            eventRecord.task->state = TaskState::READY;
+            this->metrics_.recordIoCompletion(*eventRecord.task, eventRecord.timestamp);
+            this->scheduler_->onIOCompletion(*eventRecord.task);
         }
         break;
 
     case EventType::TIME_SLICE_EXPIRE:
-        SPDLOG_TRACE("Handling TIME_SLICE_EXPIRE for task {}", e.task ? e.task->name : "<null>");
-        if (e.task) {
-            for (auto& core : cores_) {
-                if (core.currentTask == e.task) {
+        SPDLOG_TRACE("Handling TIME_SLICE_EXPIRE for task {}", eventRecord.task ? eventRecord.task->name : "<null>");
+        if (eventRecord.task) {
+            for (auto& core : this->cores_) {
+                if (core.currentTask == eventRecord.task) {
                     core.currentTask = nullptr;
-                    core.busyUntil = e.timestamp;
+                    core.busyUntil = eventRecord.timestamp;
                     core.idle = true;
-                    core.idleStart = e.timestamp;
+                    core.idleStart = eventRecord.timestamp;
                 }
             }
-            e.task->state = TaskState::READY;
-            scheduler_->onTimeSliceExpired(*e.task);
+            eventRecord.task->state = TaskState::READY;
+            this->scheduler_->onTimeSliceExpired(*eventRecord.task);
         }
         break;
 
     case EventType::TIMER_TICK:
-        SPDLOG_TRACE("Handling TIMER_TICK @ {} ms", e.timestamp);
-        metrics_.recordTimerTick(e.timestamp, currentCoreAssignments(), tasks_, eventQueue_.size());
-        scheduleTimerTick(e.timestamp);
+        SPDLOG_TRACE("Handling TIMER_TICK @ {} ms", eventRecord.timestamp);
+        this->metrics_.recordTimerTick(eventRecord.timestamp, this->currentCoreAssignments(), this->tasks_, this->eventQueue_.size());
+        this->scheduleTimerTick(eventRecord.timestamp);
         break;
 
     default:
-        SPDLOG_WARN("Received unknown event type {}", static_cast<int>(e.type));
+        SPDLOG_WARN("Received unknown event type {}", static_cast<int>(eventRecord.type));
         break;
     }
 }
@@ -470,54 +470,54 @@ void SimulationEngine::handleEvent(const Event& e)
 // ---------- Dispatch Tasks ----------
 void SimulationEngine::dispatchTasks()
 {
-    for (size_t coreIndex = 0; coreIndex < cores_.size(); ++coreIndex) {
-        auto& core = cores_[coreIndex];
-        if (core.currentTask == nullptr || core.busyUntil <= currentTime_) {
-            Task* next = scheduler_->pickNextTask();
-            if (next) {
-                if (core.idle && core.idleStart < currentTime_) {
-                    metrics_.recordCoreIdle(coreIndex, core.idleStart, currentTime_);
+    for (size_t coreIndex = 0; coreIndex < this->cores_.size(); ++coreIndex) {
+        auto& core = this->cores_[coreIndex];
+        if (core.currentTask == nullptr || core.busyUntil <= this->currentTime_) {
+            Task* nextTask = this->scheduler_->pickNextTask();
+            if (nextTask) {
+                if (core.idle && core.idleStart < this->currentTime_) {
+                    this->metrics_.recordCoreIdle(coreIndex, core.idleStart, this->currentTime_);
                 }
                 core.idle = false;
-                if (next->remainingTime == 0) {
-                    const uint64_t fallback = next->execTime.second ? next->execTime.second : (next->execTime.first ? next->execTime.first : 1);
-                    next->remainingTime = fallback;
+                if (nextTask->remainingTime == 0) {
+                    const uint64_t fallback = nextTask->execTime.second ? nextTask->execTime.second : (nextTask->execTime.first ? nextTask->execTime.first : 1);
+                    nextTask->remainingTime = fallback;
                 }
 
-                const uint64_t requestedSlice = next->currentTimeSliceMs ? std::min(next->currentTimeSliceMs, next->remainingTime) : next->remainingTime;
-                const uint64_t runDuration = std::max<uint64_t>(1, std::min(requestedSlice, next->remainingTime));
-                uint64_t remainingAfter = next->remainingTime > runDuration ? next->remainingTime - runDuration : 0;
+                const uint64_t requestedSlice = nextTask->currentTimeSliceMs ? std::min(nextTask->currentTimeSliceMs, nextTask->remainingTime) : nextTask->remainingTime;
+                const uint64_t runDuration = std::max<uint64_t>(1, std::min(requestedSlice, nextTask->remainingTime));
+                uint64_t remainingAfter = nextTask->remainingTime > runDuration ? nextTask->remainingTime - runDuration : 0;
 
-                next->state = TaskState::RUNNING;
-                next->currentTimeSliceMs = 0;
-                next->lastRunDurationMs = runDuration;
-                next->remainingTime = remainingAfter;
+                nextTask->state = TaskState::RUNNING;
+                nextTask->currentTimeSliceMs = 0;
+                nextTask->lastRunDurationMs = runDuration;
+                nextTask->remainingTime = remainingAfter;
 
-                core.currentTask = next;
-                core.busyUntil = currentTime_ + runDuration;
+                core.currentTask = nextTask;
+                core.busyUntil = this->currentTime_ + runDuration;
 
-                metrics_.recordTaskDispatch(*next, coreIndex, currentTime_, core.busyUntil, contextSwitchCostUs_);
+                this->metrics_.recordTaskDispatch(*nextTask, coreIndex, this->currentTime_, core.busyUntil, this->contextSwitchCostUs_);
 
                 EventType completionType = remainingAfter == 0 ? EventType::TASK_COMPLETION : EventType::TIME_SLICE_EXPIRE;
-                Event completion(completionType, core.busyUntil, next);
-                eventQueue_.push(completion);
+                Event completionEvent(completionType, core.busyUntil, nextTask);
+                this->eventQueue_.push(completionEvent);
 
                 SPDLOG_DEBUG("Dispatching task {} on core {} for {} ms -> completes@ {} (remaining {})",
-                    next->name,
+                    nextTask->name,
                     coreIndex,
                     runDuration,
                     core.busyUntil,
                     remainingAfter);
 
-                if (verbose_)
-                    log("Dispatching task " + next->name + " for " + std::to_string(runDuration) + "ms -> finishes @ " + std::to_string(core.busyUntil));
+                if (this->verbose_)
+                    this->log("Dispatching task " + nextTask->name + " for " + std::to_string(runDuration) + "ms -> finishes @ " + std::to_string(core.busyUntil));
             } else {
-                SPDLOG_TRACE("Core {} idle at {} ms (no task available)", coreIndex, currentTime_);
+                SPDLOG_TRACE("Core {} idle at {} ms (no task available)", coreIndex, this->currentTime_);
                 core.currentTask = nullptr;
-                core.busyUntil = currentTime_;
+                core.busyUntil = this->currentTime_;
                 if (!core.idle) {
                     core.idle = true;
-                    core.idleStart = currentTime_;
+                    core.idleStart = this->currentTime_;
                 }
             }
         }
@@ -527,30 +527,30 @@ void SimulationEngine::dispatchTasks()
 // ---------- Export Results ----------
 json SimulationEngine::exportResults() const
 {
-    return metrics_.buildReport();
+    return this->metrics_.buildReport();
 }
 
 // ---------- Log Helper ----------
 void SimulationEngine::log(const std::string& msg) const
 {
-    SPDLOG_DEBUG("[t={} ms] {}", currentTime_, msg);
+    SPDLOG_DEBUG("[t={} ms] {}", this->currentTime_, msg);
 }
 
 void SimulationEngine::scheduleTimerTick(uint64_t startTimeMs)
 {
-    if (tickIntervalMs_ == 0) {
+    if (this->tickIntervalMs_ == 0) {
         return;
     }
 
-    const uint64_t nextTick = startTimeMs + tickIntervalMs_;
-    eventQueue_.push(Event(EventType::TIMER_TICK, nextTick, nullptr));
+    const uint64_t nextTick = startTimeMs + this->tickIntervalMs_;
+    this->eventQueue_.push(Event(EventType::TIMER_TICK, nextTick, nullptr));
 }
 
 std::vector<int> SimulationEngine::currentCoreAssignments() const
 {
     std::vector<int> assignments;
-    assignments.reserve(cores_.size());
-    for (const auto& core : cores_) {
+    assignments.reserve(this->cores_.size());
+    for (const auto& core : this->cores_) {
         assignments.push_back(core.currentTask ? core.currentTask->id : -1);
     }
     return assignments;
