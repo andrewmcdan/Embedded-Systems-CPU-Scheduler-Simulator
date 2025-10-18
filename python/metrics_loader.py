@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Utilities for loading and visualising scheduler simulation trace files.
+Utilities for loading and visualizing scheduler simulation trace files.
 
 The helpers in this module expect the JSON structure produced by
 ``SimulationEngine::exportResults`` which contains:
