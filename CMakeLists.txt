@@ -58,8 +58,10 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(yaml-cpp)
 
 # Suppress MSVC "unsafe/deprecated" warnings (C4996)
+# Suppress MSVC "unused parameter" warnings (C4100)
 if (MSVC)
     add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+    add_definitions(-D_C4100)
 endif()
 
 # --- Source files ---
@@ -96,6 +98,7 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "Source dir: ${PROJECT_SOURCE_DIR}")
 
+# --- Post-build: Copy data directory ---
 if (EXISTS "${PROJECT_SOURCE_DIR}/data")
   add_custom_command(TARGET scheduler_sim POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory

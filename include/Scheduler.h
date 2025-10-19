@@ -1,11 +1,13 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
-#include <memory>
 #include <queue>
+#include <memory>
 #include <vector>
 #include <iostream>
 #include <unordered_map>
+#include <string_view>
 #include "Task.h"
 
 /**
@@ -36,6 +38,59 @@ public:
     void onTaskCompletion(Task& task) override;
     Task* pickNextTask() override;
     void printStats() const override;
+};
+
+/**
+ * @brief Non-preemptive Shortest-Job-First scheduler.
+ *
+ * Tasks with the smallest remaining CPU burst are dispatched first.
+ */
+class SJFScheduler : public IScheduler {
+public:
+    SJFScheduler() = default;
+
+    void onTaskArrival(Task& task) override;
+    void onTaskCompletion(Task& task) override;
+    void onIOCompletion(Task& task) override;
+    void onTimeSliceExpired(Task& task) override;
+    Task* pickNextTask() override;
+    void printStats() const override;
+
+private:
+    std::vector<Task*> readyQueue_;
+    size_t totalEnqueued_ = 0;
+    size_t totalDispatched_ = 0;
+
+    static uint64_t nextBurst(const Task& task);
+    static bool shorter(Task* lhs, Task* rhs);
+    void enqueue(Task& task, std::string_view reason);
+};
+
+/**
+ * @brief Classic Round-Robin scheduler with a fixed time quantum.
+ *
+ * Tasks are processed in FIFO order, each receiving up to the configured
+ * quantum before being rotated to the back of the queue if not completed.
+ */
+class RRScheduler : public IScheduler {
+public:
+    explicit RRScheduler(uint64_t quantumMs = 5);
+
+    void onTaskArrival(Task& task) override;
+    void onTaskCompletion(Task& task) override;
+    void onIOCompletion(Task& task) override;
+    void onTimeSliceExpired(Task& task) override;
+    Task* pickNextTask() override;
+    void printStats() const override;
+
+    uint64_t quantumMs() const { return this->timeQuantumMs_; }
+
+private:
+    std::queue<Task*> readyQueue_;
+    uint64_t timeQuantumMs_;
+    uint64_t totalEnqueued_ = 0;
+
+    void enqueue(Task& task, std::string_view reason);
 };
 
 /**

@@ -121,7 +121,7 @@ std::string trimCopy(const std::string& value)
     return std::string(beginIterator, endIterator);
 }
 
-std::string normalisePolicy(const std::string& rawValue)
+std::string normalizePolicy(const std::string& rawValue)
 {
     std::string trimmed = trimCopy(rawValue);
     std::transform(trimmed.begin(), trimmed.end(), trimmed.begin(), [](unsigned char character) {
@@ -136,13 +136,13 @@ std::vector<std::string> parsePolicies(const std::string& rawPolicies)
     std::stringstream policyStream(rawPolicies);
     std::string policyToken;
     while (std::getline(policyStream, policyToken, ',')) {
-        std::string normalised = normalisePolicy(policyToken);
-        if (!normalised.empty()) {
-            result.push_back(normalised);
+        std::string normalized = normalizePolicy(policyToken);
+        if (!normalized.empty()) {
+            result.push_back(normalized);
         }
     }
     if (result.empty()) {
-        std::string fallback = normalisePolicy(rawPolicies);
+        std::string fallback = normalizePolicy(rawPolicies);
         if (!fallback.empty()) {
             result.push_back(fallback);
         }
@@ -154,6 +154,12 @@ std::unique_ptr<IScheduler> createScheduler(const std::string& policy)
 {
     if (policy == "fcfs") {
         return std::make_unique<FCFSScheduler>();
+    }
+    if (policy == "sjf" || policy == "shortest_job_first" || policy == "shortest-job-first") {
+        return std::make_unique<SJFScheduler>();
+    }
+    if (policy == "rr" || policy == "round_robin" || policy == "round-robin") {
+        return std::make_unique<RRScheduler>();
     }
     if (policy == "mlfq") {
         return std::make_unique<MLFQScheduler>();

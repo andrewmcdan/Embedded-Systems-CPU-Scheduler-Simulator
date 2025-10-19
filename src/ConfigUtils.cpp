@@ -185,10 +185,10 @@ std::pair<uint64_t, uint64_t> extractDurationRangeMs(const json& obj, std::strin
                 if (auto meanVal = readWithScale(node, "mean", defaultScale)) {
                     localMin = localMax = *meanVal;
                     localFound = true;
-                } else if (auto meanVal = readWithScale(node, "mean_ms", 1.0)) {
+                } else if (meanVal = readWithScale(node, "mean_ms", 1.0)) {
                     localMin = localMax = *meanVal;
                     localFound = true;
-                } else if (auto meanVal = readWithScale(node, "mean_us", 0.001)) {
+                } else if (meanVal = readWithScale(node, "mean_us", 0.001)) {
                     localMin = localMax = *meanVal;
                     localFound = true;
                 } else if (auto valueVal = readWithScale(node, "value", defaultScale)) {
@@ -231,7 +231,7 @@ std::pair<uint64_t, uint64_t> extractDurationRangeMs(const json& obj, std::strin
     }
 
     if (!updated) {
-        clampRange(defaultRange.first, defaultRange.second);
+        clampRange(static_cast<double>(defaultRange.first), static_cast<double>(defaultRange.second));
     }
 
     return { minMs, maxMs };
