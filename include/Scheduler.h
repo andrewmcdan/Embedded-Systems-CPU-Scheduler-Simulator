@@ -20,7 +20,7 @@ public:
 
     virtual void onTaskArrival(Task& task) = 0;
     virtual void onTaskCompletion(Task& task) = 0;
-    virtual void onIOCompletion(Task& task) {}
+    virtual void onIOCompletion(Task& task) { (void)task; }
     virtual void onTimeSliceExpired(Task& task) { onTaskArrival(task); }
     virtual Task* pickNextTask() = 0;
 
@@ -63,6 +63,38 @@ private:
 
     static uint64_t nextBurst(const Task& task);
     static bool shorter(Task* lhs, Task* rhs);
+    void enqueue(Task& task, std::string_view reason);
+};
+
+/**
+ * @brief Static priority scheduler (lower numeric value == higher priority).
+ */
+class PriorityScheduler : public IScheduler {
+public:
+    PriorityScheduler() = default;
+
+    void onTaskArrival(Task& task) override;
+    void onTaskCompletion(Task& task) override;
+    void onIOCompletion(Task& task) override;
+    void onTimeSliceExpired(Task& task) override;
+    Task* pickNextTask() override;
+    void printStats() const override;
+
+private:
+    struct QueuedTask {
+        Task* task = nullptr;
+        uint64_t sequence = 0;
+    };
+
+    struct Comparator {
+        bool operator()(const QueuedTask& lhs, const QueuedTask& rhs) const;
+    };
+
+    std::priority_queue<QueuedTask, std::vector<QueuedTask>, Comparator> readyQueue_;
+    uint64_t nextSequence_ = 0;
+    size_t totalEnqueued_ = 0;
+    size_t totalDispatched_ = 0;
+
     void enqueue(Task& task, std::string_view reason);
 };
 

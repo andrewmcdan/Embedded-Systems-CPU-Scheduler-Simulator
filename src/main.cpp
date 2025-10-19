@@ -1,7 +1,3 @@
-#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
-#define SPDLOG_DEBUG_ON
-#define SPDLOG_TRACE_ON
-
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -157,6 +153,9 @@ std::unique_ptr<IScheduler> createScheduler(const std::string& policy)
     }
     if (policy == "sjf" || policy == "shortest_job_first" || policy == "shortest-job-first") {
         return std::make_unique<SJFScheduler>();
+    }
+    if (policy == "priority" || policy == "priority_scheduling" || policy == "priority-scheduling") {
+        return std::make_unique<PriorityScheduler>();
     }
     if (policy == "rr" || policy == "round_robin" || policy == "round-robin") {
         return std::make_unique<RRScheduler>();

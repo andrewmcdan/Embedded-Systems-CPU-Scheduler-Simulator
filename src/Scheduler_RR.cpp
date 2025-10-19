@@ -18,6 +18,7 @@ void RRScheduler::onTaskArrival(Task& task)
 
 void RRScheduler::onTaskCompletion(Task& task)
 {
+    (void)task; // suppress unused parameter warning when compiled with spdlog debug disabled
     SPDLOG_DEBUG("[RR] Task {} completed (id={})", task.name, task.id);
 }
 

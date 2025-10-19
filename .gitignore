@@ -36,4 +36,4 @@ venv/
 ENV/
 
 .VScode*
-/results/*
+/results/

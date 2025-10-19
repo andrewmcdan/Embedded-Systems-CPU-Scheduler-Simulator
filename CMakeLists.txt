@@ -55,14 +55,28 @@ FetchContent_Declare(
   GIT_TAG 0.8.0
   SOURCE_DIR ${PROJECT_SOURCE_DIR}/libs/yaml-cpp
 )
+
+set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "Disable yaml-cpp tests" FORCE)
+set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "Disable yaml-cpp contrib" FORCE)
+set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "Disable yaml-cpp tools" FORCE)
+
 FetchContent_MakeAvailable(yaml-cpp)
+
 
 # Suppress MSVC "unsafe/deprecated" warnings (C4996)
 # Suppress MSVC "unused parameter" warnings (C4100)
 if (MSVC)
-    add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+    add_definitions(-D_SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS)
     add_definitions(-D_C4100)
 endif()
+
+# Add spdlog debug/trace defines for 
+#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
+#define SPDLOG_DEBUG_ON
+#define SPDLOG_TRACE_ON
+add_definitions(-DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
+add_definitions(-DSPDLOG_DEBUG_ON)
+add_definitions(-DSPDLOG_TRACE_ON)
 
 # --- Source files ---
 file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/*.cpp)
