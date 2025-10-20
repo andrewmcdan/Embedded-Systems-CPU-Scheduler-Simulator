@@ -15,6 +15,8 @@
 #include <argparse/argparse.hpp>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/sinks/rotating_file_sink.h>
 #include <yaml-cpp/yaml.h>
 
 // Internal project headers
@@ -146,6 +148,38 @@ std::vector<std::string> parsePolicies(const std::string& rawPolicies)
     return result;
 }
 
+spdlog::level::level_enum parseLogLevel(const std::string& rawValue)
+{
+    std::string lowered = trimCopy(rawValue);
+    std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+
+    if (lowered == "trace") return spdlog::level::trace;
+    if (lowered == "debug") return spdlog::level::debug;
+    if (lowered == "info" || lowered == "information") return spdlog::level::info;
+    if (lowered == "warn" || lowered == "warning") return spdlog::level::warn;
+    if (lowered == "error" || lowered == "err") return spdlog::level::err;
+    if (lowered == "critical" || lowered == "fatal") return spdlog::level::critical;
+    if (lowered == "off" || lowered == "none") return spdlog::level::off;
+
+    throw std::invalid_argument("Unrecognized log level: " + rawValue);
+}
+
+std::string logLevelToString(spdlog::level::level_enum level)
+{
+    switch (level) {
+    case spdlog::level::trace: return "trace";
+    case spdlog::level::debug: return "debug";
+    case spdlog::level::info: return "info";
+    case spdlog::level::warn: return "warn";
+    case spdlog::level::err: return "error";
+    case spdlog::level::critical: return "critical";
+    case spdlog::level::off: return "off";
+    default: return "unknown";
+    }
+}
+
 std::unique_ptr<IScheduler> createScheduler(const std::string& policy)
 {
     if (policy == "fcfs") {
@@ -223,11 +257,36 @@ int main(int argc, char* argv[])
         .default_value(false)
         .implicit_value(true);
 
+    program.add_argument("--log_file")
+        .help("Path to the rotating log file")
+        .default_value(std::string("logs/scheduler.log"));
+   
+    program.add_argument("--log_file_level")
+        .help("Minimum log level for the file sink (trace, debug, info, warn, error, critical, off)")
+        .default_value(std::string("debug"));
+
+    program.add_argument("--log_stdout_level")
+        .help("Minimum log level for stdout (trace, debug, info, warn, error, critical, off)")
+        .default_value(std::string("info"));
+
+    program.add_argument("--log_file_max_size_mb")
+        .help("Maximum size of the log file before rotation (in MB)")
+        .scan<'i', int>()
+        .default_value(50);
+
+    program.add_argument("--log_file_max_files")
+        .help("Maximum number of rotated log files to keep")
+        .scan<'i', int>()
+        .default_value(5);
+
+    program.add_argument("--results_subdir")
+        .help("Optional subdirectory under the results directory (e.g. 'experiment_01')")
+        .default_value(std::string());
+
     try {
         program.parse_args(argc, argv);
-        SPDLOG_TRACE("Raw CLI parsed without errors");
     } catch (const std::exception& e) {
-        SPDLOG_ERROR("Argument parsing failed: {}", e.what());
+        std::cerr << "Argument parsing failed: " << e.what() << std::endl;
         return 1;
     }
 
@@ -238,6 +297,117 @@ int main(int argc, char* argv[])
     std::string outputPath = program.get<std::string>("--out_file");
     int duration = program.get<int>("--duration");
     bool verbose = program.get<bool>("--verbose");
+
+    std::string logFilePath = program.get<std::string>("--log_file");
+    std::string logFileLevelStr = program.get<std::string>("--log_file_level");
+    std::string logStdoutLevelStr = program.get<std::string>("--log_stdout_level");
+    int logFileMaxSizeMb = program.get<int>("--log_file_max_size_mb");
+    int logFileMaxFiles = program.get<int>("--log_file_max_files");
+    std::string resultsSubdir = program.get<std::string>("--results_subdir");
+
+    resultsSubdir = trimCopy(resultsSubdir);
+    if (!resultsSubdir.empty()) {
+        std::filesystem::path subdirPath(resultsSubdir);
+        if (subdirPath.is_absolute()) {
+            std::cerr << "--results_subdir must be a relative path (received absolute path)" << std::endl;
+            return 1;
+        }
+        for (const auto& part : subdirPath) {
+            if (part == "..") {
+                std::cerr << "--results_subdir cannot contain '..' segments" << std::endl;
+                return 1;
+            }
+        }
+    }
+
+    std::filesystem::path outputPathFs(outputPath);
+    if (!resultsSubdir.empty()) {
+        std::filesystem::path baseDir;
+        if (outputPathFs.has_filename()) {
+            baseDir = outputPathFs.parent_path();
+        } else {
+            baseDir = outputPathFs;
+        }
+        if (baseDir.empty()) {
+            baseDir = std::filesystem::path("results");
+        }
+        baseDir /= std::filesystem::path(resultsSubdir);
+        if (outputPathFs.has_filename()) {
+            outputPathFs = baseDir / outputPathFs.filename();
+        } else {
+            outputPathFs = baseDir;
+        }
+        outputPath = outputPathFs.generic_string();
+    }
+
+    const bool stdoutLevelExplicit = program.is_used("--log_stdout_level");
+    const bool fileLevelExplicit = program.is_used("--log_file_level");
+
+    spdlog::level::level_enum stdoutLevel;
+    spdlog::level::level_enum fileLevel;
+    try {
+        stdoutLevel = parseLogLevel(logStdoutLevelStr);
+        fileLevel = parseLogLevel(logFileLevelStr);
+    } catch (const std::exception& ex) {
+        std::cerr << "Invalid log level: " << ex.what() << std::endl;
+        return 1;
+    }
+
+    if (verbose) {
+        if (!stdoutLevelExplicit) {
+            stdoutLevel = spdlog::level::debug;
+        }
+        if (!fileLevelExplicit) {
+            fileLevel = spdlog::level::trace;
+        }
+    }
+
+    if (logFileMaxSizeMb <= 0) {
+        std::cerr << "log_file_max_size_mb must be greater than zero" << std::endl;
+        return 1;
+    }
+    if (logFileMaxFiles <= 0) {
+        std::cerr << "log_file_max_files must be greater than zero" << std::endl;
+        return 1;
+    }
+
+    std::filesystem::path logFilePathFs(logFilePath);
+    if (auto parent = logFilePathFs.parent_path(); !parent.empty() && !std::filesystem::exists(parent)) {
+        try {
+            std::filesystem::create_directories(parent);
+        } catch (const std::exception& ex) {
+            std::cerr << "Failed to create log directory '" << parent.string() << "': " << ex.what() << std::endl;
+            return 1;
+        }
+    }
+
+    auto consoleSink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    consoleSink->set_level(stdoutLevel);
+    consoleSink->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
+
+    const std::size_t maxSizeBytes = static_cast<std::size_t>(logFileMaxSizeMb) * 1024ULL * 1024ULL;
+    std::shared_ptr<spdlog::sinks::rotating_file_sink_mt> fileSink;
+    try {
+        fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(logFilePathFs.string(), maxSizeBytes, static_cast<std::size_t>(logFileMaxFiles));
+    } catch (const std::exception& ex) {
+        std::cerr << "Failed to initialise log file sink '" << logFilePathFs.string() << "': " << ex.what() << std::endl;
+        return 1;
+    }
+    fileSink->set_level(fileLevel);
+    fileSink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [%s:%# %!] %v");
+
+    auto logger = std::make_shared<spdlog::logger>("scheduler_sim", spdlog::sinks_init_list{ consoleSink, fileSink });
+    const spdlog::level::level_enum globalLevel = std::min(stdoutLevel, fileLevel);
+    logger->set_level(globalLevel);
+    logger->flush_on(spdlog::level::err);
+    spdlog::set_default_logger(logger);
+
+    SPDLOG_INFO("Logging configured: stdout>={} file>={} ({})",
+        logLevelToString(stdoutLevel),
+        logLevelToString(fileLevel),
+        logFilePathFs.string());
+    SPDLOG_TRACE("Log rotation: max_size={} bytes, max_files={}", maxSizeBytes, logFileMaxFiles);
+
     SPDLOG_TRACE("CLI values -> workload='{}', scenario='{}', policy='{}', duration={}ms, out='{}', verbose={}",
         workloadPath,
         scenarioPath,
@@ -245,11 +415,6 @@ int main(int argc, char* argv[])
         duration,
         outputPath,
         verbose);
-
-    // --- Configure logging ---
-    // Log pattern: [YYYY-MM-DD HH:MM:SS.mmm] [LEVEL] [sourcefile:line function] message
-    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%s:%# %!] %v");
-    spdlog::set_level(verbose ? spdlog::level::trace : spdlog::level::info);
 
     SPDLOG_INFO("=== Embedded CPU Scheduler Simulation ===");
 
@@ -301,6 +466,9 @@ int main(int argc, char* argv[])
         SPDLOG_INFO("Duration: {} ms (scenario override)", duration);
     } else {
         SPDLOG_INFO("Duration: {} ms", duration);
+    }
+    if (!resultsSubdir.empty()) {
+        SPDLOG_INFO("Results subdirectory: {}", resultsSubdir);
     }
     SPDLOG_INFO("Output: {}", outputPath);
 
