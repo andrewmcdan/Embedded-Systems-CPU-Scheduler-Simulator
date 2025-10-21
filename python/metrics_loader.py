@@ -17,7 +17,7 @@ frames and Plotly figures so that scripts and notebooks can share a single
 implementation.
 """
 
-from __future__ import annotations
+
 
 import json
 from pathlib import Path
@@ -36,6 +36,7 @@ except ImportError as exc:  # pragma: no cover
 
 TraceDict = dict
 
+# --- Data loading and extraction functions ---
 
 def load_trace(path: Path | str) -> TraceDict:
     """Load a trace JSON file produced by the simulator."""
@@ -44,7 +45,7 @@ def load_trace(path: Path | str) -> TraceDict:
         return json.load(fh)
 
 
-def timeline_df(trace: TraceDict) -> pd.DataFrame:
+def timeline_dataFrame(trace: TraceDict) -> pd.DataFrame:
     """Return the full timeline table as a DataFrame."""
     entries = trace.get("timeline", [])
     if not entries:
@@ -55,15 +56,15 @@ def timeline_df(trace: TraceDict) -> pd.DataFrame:
     return frame
 
 
-def task_lifecycle_df(trace: TraceDict) -> pd.DataFrame:
-    """Return lifecycle metrics for each task instance."""
+def task_lifecycle_dataFrame(trace: TraceDict) -> pd.DataFrame:
+    """Return lifecycle data for each task instance."""
     rows = trace.get("tasks", {}).get("lifecycle", [])
     if not rows:
         return pd.DataFrame()
     return pd.DataFrame(rows)
 
 
-def ticks_df(trace: TraceDict) -> pd.DataFrame:
+def ticks_dataFrame(trace: TraceDict) -> pd.DataFrame:
     """Return timer tick samples as DataFrame."""
     rows = trace.get("ticks", [])
     if not rows:
@@ -88,15 +89,17 @@ def config_dict(trace: TraceDict) -> dict:
     return dict(trace.get("config", {}))
 
 
-def _massage_end_time(start_ms: float, end_ms: float) -> float:
+def _adjust_end_time(start_ms: float, end_ms: float) -> float:
     """Ensure that timeline segments have a non-zero length."""
     if end_ms <= start_ms:
-        # add a minimal sliver (0.1 ms) so the bar is visible
+        # add a minimal sliver (0.1 ms) so the bar is visible when rendered
         return start_ms + 0.1
     return end_ms
 
 
-def core_schedule_df(
+# --- Visualization functions ---
+
+def core_schedule_dataFrame(
     trace: TraceDict,
     include_idle: bool = True,
     events: Optional[Iterable[str]] = None,
@@ -114,43 +117,69 @@ def core_schedule_df(
         Optional iterable of event names to keep (defaults to
         ``{"task_dispatch", "core_idle"}``).
     """
-    base = timeline_df(trace)
+    # Create base timeline DataFrame
+    base = timeline_dataFrame(trace)
     if base.empty:
         return pd.DataFrame(columns=["core", "label", "start_dt", "end_dt", "event"])
 
+    # Filter to core-related events
     frame = base[base["core"].notna()].copy()
     if frame.empty:
         return pd.DataFrame(columns=["core", "label", "start_dt", "end_dt", "event"])
 
+    # Convert core to integer type
     frame["core"] = frame["core"].astype("Int64")
+    # Filter to allowed events
     allowed_events = set(events or {"task_dispatch", "core_idle"})
     frame = frame[frame["event"].isin(allowed_events)]
     if not include_idle:
         frame = frame[frame["event"] != "core_idle"]
 
+    # If no entries remain, return empty DataFrame
     if frame.empty:
         return pd.DataFrame(columns=["core", "label", "start_dt", "end_dt", "event"])
 
+    # Adjust end times to ensure non-zero length
     frame["end_ms"] = frame.apply(
-        lambda row: _massage_end_time(row["start_ms"], row["end_ms"]),
+        lambda row: _adjust_end_time(row["start_ms"], row["end_ms"]),
         axis=1,
     )
 
+    # Convert timestamps to datetime
     frame["start_dt"] = pd.to_datetime(frame["start_ms"], unit="ms")
     frame["end_dt"] = pd.to_datetime(frame["end_ms"], unit="ms")
 
+    # Create human-readable labels
     def _label(row: pd.Series) -> str:
         if pd.notna(row.get("task_name")) and row["task_name"]:
             return row["task_name"]
         return row["event"]
 
+    # Add label column
     frame["label"] = frame.apply(_label, axis=1)
     return frame[["core", "label", "start_dt", "end_dt", "event", "task_id", "task_name", "metadata"]]
 
 
 def make_core_timeline_figure(trace: TraceDict, include_idle: bool = True) -> go.Figure:
-    """Create a Plotly timeline figure showing task execution per core."""
-    schedule = core_schedule_df(trace, include_idle=include_idle)
+    """
+    Create a Plotly timeline figure showing task execution per core.
+    
+    Parameters
+    ----------
+    trace:
+        Loaded trace dictionary
+    include_idle:
+        Whether to include idle spans in the timeline.
+    
+    Returns
+    -------
+    go.Figure
+        Plotly figure object with the core timeline visualization.
+
+    """
+
+    # Get core schedule DataFrame
+    schedule = core_schedule_dataFrame(trace, include_idle=include_idle)
     if schedule.empty:
         fig = go.Figure()
         fig.update_layout(
@@ -160,6 +189,7 @@ def make_core_timeline_figure(trace: TraceDict, include_idle: bool = True) -> go
         )
         return fig
 
+    # Create timeline figure using Plotly.
     fig = px.timeline(
         schedule,
         x_start="start_dt",
@@ -185,57 +215,89 @@ def make_core_timeline_figure(trace: TraceDict, include_idle: bool = True) -> go
     return fig
 
 
-def make_cpu_utilisation_figure(trace: TraceDict, rolling_window: int = 50) -> go.Figure:
-    """Plot CPU utilisation over time based on tick samples."""
-    ticks = ticks_df(trace)
+def make_cpu_utilization_figure(trace: TraceDict, rolling_window: int = 50) -> go.Figure:
+    """
+    Plot CPU utilization over time based on tick samples.
+    
+    Parameters
+    ----------
+    trace:
+        Loaded trace dictionary.
+    rolling_window:
+        Size of the rolling window (in samples) for smoothing the utilization curve.
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure object with the CPU utilization timeline.
+
+    """
+    ticks = ticks_dataFrame(trace)
     fig = go.Figure()
     if ticks.empty:
         fig.update_layout(
-            title="CPU utilisation (no tick samples available)",
+            title="CPU utilization (no tick samples available)",
             xaxis_title="Simulation time",
-            yaxis_title="Utilisation",
+            yaxis_title="Utilization",
         )
         return fig
 
+    # Calculate utilization
     ticks = ticks.copy()
     total = ticks["cores_total"].replace(0, pd.NA).astype("Float64")
     util = ticks["cores_busy"].astype(float) / total
     util = util.fillna(0.0)
-    ticks["utilisation"] = util
+    ticks["utilization"] = util
     ticks["timestamp_dt"] = pd.to_datetime(ticks["timestamp_ms"], unit="ms")
 
+    # Add instantaneous utilization trace
     fig.add_trace(
         go.Scatter(
             x=ticks["timestamp_dt"],
-            y=ticks["utilisation"],
+            y=ticks["utilization"],
             name="Instantaneous",
             mode="lines",
         )
     )
 
+    # Add rolling average trace
     if rolling_window > 1:
-        ticks["utilisation_avg"] = ticks["utilisation"].rolling(rolling_window, min_periods=1).mean()
+        ticks["utilization_avg"] = ticks["utilization"].rolling(rolling_window, min_periods=1).mean()
         fig.add_trace(
             go.Scatter(
                 x=ticks["timestamp_dt"],
-                y=ticks["utilisation_avg"],
+                y=ticks["utilization_avg"],
                 name=f"Rolling mean ({rolling_window} samples)",
                 mode="lines",
                 line=dict(width=3),
             )
         )
 
+    #  Finalize layout
     fig.update_layout(
-        title="CPU utilisation timeline",
+        title="CPU utilization timeline",
         xaxis_title="Simulation time",
-        yaxis_title="Utilisation (fraction of busy cores)",
+        yaxis_title="Utilization (fraction of busy cores)",
         yaxis=dict(range=[0, 1]),
     )
     return fig
 
 
 def make_core_idle_bar_figure(trace: TraceDict) -> go.Figure:
-    """Return a bar chart showing idle time per core."""
+    """
+    Return a bar chart showing idle time per core.
+    
+    Parameters
+    ----------
+    trace:
+        Loaded trace dictionary.
+    
+    Returns
+    -------
+    go.Figure
+        Plotly figure object with the core idle time bar chart.
+    
+    """
     summary = summary_dict(trace)
     idle = summary.get("core_idle_time_ms")
     if not idle:
@@ -261,7 +323,7 @@ def make_core_idle_bar_figure(trace: TraceDict) -> go.Figure:
 
 def make_task_runtime_scatter(trace: TraceDict) -> go.Figure:
     """Plot runtime vs wait time for individual task instances."""
-    tasks = task_lifecycle_df(trace)
+    tasks = task_lifecycle_dataFrame(trace)
     fig = go.Figure()
     if tasks.empty:
         fig.update_layout(
@@ -294,15 +356,15 @@ def make_task_runtime_scatter(trace: TraceDict) -> go.Figure:
 
 __all__ = [
     "load_trace",
-    "timeline_df",
-    "task_lifecycle_df",
-    "ticks_df",
+    "timeline_dataFrame",
+    "task_lifecycle_dataFrame",
+    "ticks_dataFrame",
     "counter_dict",
     "summary_dict",
     "config_dict",
-    "core_schedule_df",
+    "core_schedule_dataFrame",
     "make_core_timeline_figure",
-    "make_cpu_utilisation_figure",
+    "make_cpu_utilization_figure",
     "make_core_idle_bar_figure",
     "make_task_runtime_scatter",
 ]

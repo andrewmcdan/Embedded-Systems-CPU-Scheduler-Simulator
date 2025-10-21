@@ -1,13 +1,13 @@
 #pragma once
 
 #include <cstdint>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
-#include <nlohmann/json.hpp>
 
-namespace simcfg {
+namespace simUtils {
 
 using json = nlohmann::json;
 
@@ -32,5 +32,4 @@ int getIntOr(const json& obj, std::string_view key, int defaultValue);
 std::string getStringOr(const json& obj, std::string_view key, std::string defaultValue);
 bool getBoolOr(const json& obj, std::string_view key, bool defaultValue);
 
-} // namespace simcfg
-
+} // namespace simUtils

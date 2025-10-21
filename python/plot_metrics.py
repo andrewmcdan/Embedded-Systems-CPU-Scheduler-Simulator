@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-Generate a set of exploratory metrics plots from a simulation trace.
+Generate a set of metrics plots from a simulation trace file.
 
 By default the script writes three HTML files to the specified output
 directory:
 
-    - cpu_utilisation.html
+    - cpu_utilization.html
     - core_idle.html
     - task_runtime.html
 
-Example:
+Usage example:
     python plot_metrics.py ../build/bin/Debug/results/trace.json --output plots/
 """
 
-from __future__ import annotations
+
 
 import argparse
 from pathlib import Path
@@ -33,7 +33,7 @@ def parse_args() -> argparse.Namespace:
         "--output",
         type=Path,
         default=Path("plots"),
-        help="Directory where HTML plots will be written (default: ./plots).",
+        help="Directory where plots will be written (HTML Files) (default: ./plots).",
     )
     parser.add_argument(
         "--show",
@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
         "--rolling-window",
         type=int,
         default=200,
-        help="Rolling window (number of samples) for utilisation smoothing.",
+        help="Rolling window (number of samples) for utilization graph smoothing.",
     )
     return parser.parse_args()
 
@@ -59,11 +59,11 @@ def main() -> None:
     args = parse_args()
     trace = ml.load_trace(args.trace)
 
-    cpu_fig = ml.make_cpu_utilisation_figure(trace, rolling_window=args.rolling_window)
+    cpu_fig = ml.make_cpu_utilization_figure(trace, rolling_window=args.rolling_window)
     idle_fig = ml.make_core_idle_bar_figure(trace)
     task_fig = ml.make_task_runtime_scatter(trace)
 
-    save_figure(cpu_fig, args.output / "cpu_utilisation.html")
+    save_figure(cpu_fig, args.output / "cpu_utilization.html")
     save_figure(idle_fig, args.output / "core_idle.html")
     save_figure(task_fig, args.output / "task_runtime.html")
 

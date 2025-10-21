@@ -15,10 +15,12 @@
 /build/
 /bin/
 /lib/
+/libs/
 /dist/
 /Debug/
 /Release/
 /libs/
+**/logs/
 
 __pycache__/
 *.py[cod]

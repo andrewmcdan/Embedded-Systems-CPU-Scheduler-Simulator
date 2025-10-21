@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Generate an interactive core timeline (Gantt-style) visualisation for a trace.
+Helper script to generate an interactive core timeline (Gantt-style) visualization for a trace. 
+Uses the metrics_loader module to load the trace and create the figure, then either opens it in a browser or saves it as an HTML file.
 
 Example:
     python gantt_vis.py ../build/bin/Debug/results/trace.json --output timeline.html
 """
 
-from __future__ import annotations
+
 
 import argparse
 from pathlib import Path

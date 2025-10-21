@@ -1,32 +1,32 @@
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <limits>
-#include <cctype>
-#include <algorithm>
 #include <vector>
 
 // External libs
 #include <argparse/argparse.hpp>
 #include <nlohmann/json.hpp>
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/rotating_file_sink.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/spdlog.h>
 #include <yaml-cpp/yaml.h>
 
 // Internal project headers
+#include "ConfigUtils.h"
 #include "Event.h"
 #include "MetricsCollector.h"
 #include "RunQueue.h"
 #include "Scheduler.h"
 #include "SimulationEngine.h"
 #include "Task.h"
-#include "ConfigUtils.h"
 
 using json = nlohmann::json;
 
@@ -155,13 +155,20 @@ spdlog::level::level_enum parseLogLevel(const std::string& rawValue)
         return static_cast<char>(std::tolower(character));
     });
 
-    if (lowered == "trace") return spdlog::level::trace;
-    if (lowered == "debug") return spdlog::level::debug;
-    if (lowered == "info" || lowered == "information") return spdlog::level::info;
-    if (lowered == "warn" || lowered == "warning") return spdlog::level::warn;
-    if (lowered == "error" || lowered == "err") return spdlog::level::err;
-    if (lowered == "critical" || lowered == "fatal") return spdlog::level::critical;
-    if (lowered == "off" || lowered == "none") return spdlog::level::off;
+    if (lowered == "trace")
+        return spdlog::level::trace;
+    if (lowered == "debug")
+        return spdlog::level::debug;
+    if (lowered == "info" || lowered == "information")
+        return spdlog::level::info;
+    if (lowered == "warn" || lowered == "warning")
+        return spdlog::level::warn;
+    if (lowered == "error" || lowered == "err")
+        return spdlog::level::err;
+    if (lowered == "critical" || lowered == "fatal")
+        return spdlog::level::critical;
+    if (lowered == "off" || lowered == "none")
+        return spdlog::level::off;
 
     throw std::invalid_argument("Unrecognized log level: " + rawValue);
 }
@@ -169,14 +176,22 @@ spdlog::level::level_enum parseLogLevel(const std::string& rawValue)
 std::string logLevelToString(spdlog::level::level_enum level)
 {
     switch (level) {
-    case spdlog::level::trace: return "trace";
-    case spdlog::level::debug: return "debug";
-    case spdlog::level::info: return "info";
-    case spdlog::level::warn: return "warn";
-    case spdlog::level::err: return "error";
-    case spdlog::level::critical: return "critical";
-    case spdlog::level::off: return "off";
-    default: return "unknown";
+    case spdlog::level::trace:
+        return "trace";
+    case spdlog::level::debug:
+        return "debug";
+    case spdlog::level::info:
+        return "info";
+    case spdlog::level::warn:
+        return "warn";
+    case spdlog::level::err:
+        return "error";
+    case spdlog::level::critical:
+        return "critical";
+    case spdlog::level::off:
+        return "off";
+    default:
+        return "unknown";
     }
 }
 
@@ -260,7 +275,7 @@ int main(int argc, char* argv[])
     program.add_argument("--log_file")
         .help("Path to the rotating log file")
         .default_value(std::string("logs/scheduler.log"));
-   
+
     program.add_argument("--log_file_level")
         .help("Minimum log level for the file sink (trace, debug, info, warn, error, critical, off)")
         .default_value(std::string("debug"));
@@ -396,7 +411,7 @@ int main(int argc, char* argv[])
     fileSink->set_level(fileLevel);
     fileSink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [%s:%# %!] %v");
 
-    auto logger = std::make_shared<spdlog::logger>("scheduler_sim", spdlog::sinks_init_list{ consoleSink, fileSink });
+    auto logger = std::make_shared<spdlog::logger>("scheduler_sim", spdlog::sinks_init_list { consoleSink, fileSink });
     const spdlog::level::level_enum globalLevel = std::min(stdoutLevel, fileLevel);
     logger->set_level(globalLevel);
     logger->flush_on(spdlog::level::err);
@@ -426,7 +441,7 @@ int main(int argc, char* argv[])
         scenarioConfig = loadConfig(scenarioPath);
         SPDLOG_TRACE("Scenario config loaded: {} keys", scenarioConfig.is_object() ? scenarioConfig.size() : 0);
         const json systemCfg = scenarioConfig.value("system", json::object());
-        scenarioRunDurationMs = simcfg::extractDurationMs(systemCfg, "run_duration", 0);
+        scenarioRunDurationMs = simUtils::extractDurationMs(systemCfg, "run_duration", 0);
     } catch (const std::exception& e) {
         SPDLOG_WARN("Failed to load scenario config '{}': {} (using defaults)", scenarioPath, e.what());
         scenarioConfig = json::object();

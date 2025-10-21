@@ -1,3 +1,9 @@
+/**
+ * @file ConfigUtils.cpp
+ * @author Andrew McDaniel
+ * @brief Utility functions for the simulator
+ */
+
 #include "ConfigUtils.h"
 
 #include <algorithm>
@@ -5,8 +11,15 @@
 #include <cmath>
 #include <spdlog/spdlog.h>
 
-namespace simcfg {
+namespace simUtils {
 
+/**
+ * @brief Try to get a numeric field from a JSON object
+ * 
+ * @param obj 
+ * @param key 
+ * @return std::optional<double> 
+ */
 std::optional<double> tryGetNumber(const json& obj, std::string_view key)
 {
     if (!obj.is_object()) {
@@ -38,6 +51,13 @@ std::optional<double> tryGetNumber(const json& obj, std::string_view key)
     return std::nullopt;
 }
 
+/**
+ * @brief Try to get a boolean field from a JSON object
+ * 
+ * @param obj 
+ * @param key 
+ * @return std::optional<bool> 
+ */
 std::optional<bool> tryGetBool(const json& obj, std::string_view key)
 {
     if (!obj.is_object()) {
@@ -65,6 +85,13 @@ std::optional<bool> tryGetBool(const json& obj, std::string_view key)
     return std::nullopt;
 }
 
+/**
+ * @brief Try to get a string field from a JSON object
+ * 
+ * @param obj 
+ * @param key 
+ * @return std::optional<std::string> 
+ */
 std::optional<std::string> tryGetString(const json& obj, std::string_view key)
 {
     if (!obj.is_object()) {
@@ -82,6 +109,12 @@ std::optional<std::string> tryGetString(const json& obj, std::string_view key)
     return std::nullopt;
 }
 
+/**
+ * @brief Convert a JSON node to a number if possible
+ * 
+ * @param node 
+ * @return std::optional<double> 
+ */
 std::optional<double> asNumber(const json& node)
 {
     if (node.is_number_float()) {
@@ -104,16 +137,37 @@ std::optional<double> asNumber(const json& node)
     return std::nullopt;
 }
 
+// ---------- Duration Extraction Helpers ----------
+/**
+ * @brief Convert a double value to milliseconds
+ * 
+ * @param value 
+ * @return uint64_t 
+ */
 uint64_t toMs(double value)
 {
     return static_cast<uint64_t>(std::llround(value));
 }
 
+/**
+ * @brief Convert a double value to microseconds
+ * 
+ * @param value 
+ * @return uint64_t 
+ */
 uint64_t toUs(double value)
 {
     return static_cast<uint64_t>(std::llround(value));
 }
 
+/**
+ * @brief Extract a duration range (min/max) in milliseconds from a JSON object
+ * 
+ * @param obj 
+ * @param keyBase 
+ * @param defaultRange 
+ * @return std::pair<uint64_t, uint64_t> 
+ */
 std::pair<uint64_t, uint64_t> extractDurationRangeMs(const json& obj, std::string_view keyBase, std::pair<uint64_t, uint64_t> defaultRange)
 {
     uint64_t minMs = defaultRange.first;
@@ -237,6 +291,14 @@ std::pair<uint64_t, uint64_t> extractDurationRangeMs(const json& obj, std::strin
     return { minMs, maxMs };
 }
 
+/**
+ * @brief Extract a duration in milliseconds from a JSON object
+ * 
+ * @param obj 
+ * @param keyBase 
+ * @param defaultValue 
+ * @return uint64_t 
+ */
 uint64_t extractDurationMs(const json& obj, std::string_view keyBase, uint64_t defaultValue)
 {
     if (!obj.is_object()) {
@@ -289,6 +351,14 @@ uint64_t extractDurationMs(const json& obj, std::string_view keyBase, uint64_t d
     return defaultValue;
 }
 
+/**
+ * @brief Extract a duration in microseconds from a JSON object
+ * 
+ * @param obj 
+ * @param keyBase 
+ * @param defaultValue 
+ * @return uint64_t 
+ */
 uint64_t extractDurationUs(const json& obj, std::string_view keyBase, uint64_t defaultValue)
 {
     if (!obj.is_object()) {
@@ -316,6 +386,14 @@ uint64_t extractDurationUs(const json& obj, std::string_view keyBase, uint64_t d
     return defaultValue;
 }
 
+/**
+ * @brief Get an from a JSON object or return a default value
+ * 
+ * @param obj 
+ * @param key 
+ * @param defaultValue 
+ * @return int 
+ */
 int getIntOr(const json& obj, std::string_view key, int defaultValue)
 {
     if (auto value = tryGetNumber(obj, key)) {
@@ -324,6 +402,14 @@ int getIntOr(const json& obj, std::string_view key, int defaultValue)
     return defaultValue;
 }
 
+/**
+ * @brief Get a string from a JSON object or return a default value
+ * 
+ * @param obj 
+ * @param key 
+ * @param defaultValue 
+ * @return std::string 
+ */
 std::string getStringOr(const json& obj, std::string_view key, std::string defaultValue)
 {
     if (auto value = tryGetString(obj, key)) {
@@ -332,6 +418,14 @@ std::string getStringOr(const json& obj, std::string_view key, std::string defau
     return defaultValue;
 }
 
+/**
+ * @brief Get a boolean from a JSON object or return a default value
+ * 
+ * @param obj 
+ * @param key 
+ * @param defaultValue 
+ * @return bool
+ */
 bool getBoolOr(const json& obj, std::string_view key, bool defaultValue)
 {
     if (auto value = tryGetBool(obj, key)) {
@@ -340,5 +434,4 @@ bool getBoolOr(const json& obj, std::string_view key, bool defaultValue)
     return defaultValue;
 }
 
-} // namespace simcfg
-
+} // namespace simUtils

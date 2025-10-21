@@ -102,7 +102,7 @@ void MetricsCollector::registerTaskDefinition(const Task& task)
     json definition = {
         { "task_id", task.id },
         { "name", task.name },
-        { "class", task.type },
+        { "class", std::string(toString(task.type)) },
         { "priority", task.priority },
         { "arrival_ms", task.arrivalTime },
         { "exec_min_ms", task.execTime.first },
@@ -493,7 +493,7 @@ MetricsCollector::TaskMetrics& MetricsCollector::ensureTaskMetrics(int taskId, c
     if (wasInserted) {
         stats.id = taskId;
         stats.name = task.name;
-        stats.taskClass = task.type;
+        stats.taskClass = std::string(toString(task.type));
         stats.priority = task.priority;
         stats.requestedExecMin = task.execTime.first;
         stats.requestedExecMax = task.execTime.second;
@@ -501,7 +501,7 @@ MetricsCollector::TaskMetrics& MetricsCollector::ensureTaskMetrics(int taskId, c
         stats.resetDynamic();
     } else {
         stats.name = task.name;
-        stats.taskClass = task.type;
+        stats.taskClass = std::string(toString(task.type));
         stats.priority = task.priority;
         stats.requestedExecMin = task.execTime.first;
         stats.requestedExecMax = task.execTime.second;

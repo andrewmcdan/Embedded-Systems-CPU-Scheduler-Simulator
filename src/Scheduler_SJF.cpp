@@ -1,3 +1,14 @@
+/**
+ * @file Scheduler_SJF.cpp
+ * @author Andrew McDaniel
+ * @brief Implementation of Shortest-Job-First (SJF) Scheduler.
+ * 
+ * Shortest-Job-First scheduling selects the task with the smallest expected CPU
+ * burst time from the ready queue. This implementation is non-preemptive; once a
+ * task is dispatched, it runs to completion or until it performs I/O.
+ * 
+ */
+
 #include "Scheduler.h"
 
 #include <algorithm>
@@ -5,6 +16,12 @@
 
 namespace {
 
+/**
+ * @brief Help function to determine the burst length of a task
+ * 
+ * @param task 
+ * @return uint64_t 
+ */
 uint64_t burstLength(const Task& task)
 {
     if (task.remainingTime != 0) {

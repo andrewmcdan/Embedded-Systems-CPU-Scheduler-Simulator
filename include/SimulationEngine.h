@@ -72,8 +72,6 @@ private:
     // --- Internal helper functions ---
     void handleEvent(const Event& eventRecord);
     void dispatchTasks();
-    void scheduleNextEvent(Task& t);
-    void log(const std::string& msg) const;
     void scheduleTimerTick(uint64_t startTimeMs);
     std::vector<int> currentCoreAssignments() const;
 };

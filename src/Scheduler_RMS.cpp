@@ -9,4 +9,4 @@
 // - data/workloads/workload_1.yml: validate that harmonic periods are present
 //   (or add new periodic tasks) for RMS test cases.
 // - data/scenarios/scenario_rms.yml (new): enable the rate-monotonic policy and
-//   document any global caps such as maximum utilisation to check.
+//   document any global caps such as maximum utilization to check.

@@ -8,4 +8,4 @@
 // - data/workloads/workload_1.yml: provide a representative workload with
 //   varied weights so proportional fairness can be tested.
 // - data/scenarios/scenario_proportional.yml (new): specify any global weight
-//   normalisation rules and enable this scheduler policy.
+//   normalization rules and enable this scheduler policy.

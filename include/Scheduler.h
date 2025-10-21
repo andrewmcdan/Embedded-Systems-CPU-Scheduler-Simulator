@@ -129,7 +129,7 @@ private:
  * @brief Multi-Level Feedback Queue scheduler.
  *
  * Tasks are distributed across several feedback queues based on their
- * declared priority. Higher priority queues (lower indices) are always
+ * priority. Higher priority queues (lower indices) are always
  * served first. Tasks that re-enter the scheduler after I/O completion
  * are promoted one level to favour interactive workloads.
  */
