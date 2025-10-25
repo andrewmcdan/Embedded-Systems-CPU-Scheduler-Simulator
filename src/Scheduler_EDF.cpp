@@ -1,3 +1,9 @@
+/**
+ * @file Scheduler_EDF.cpp
+ * @author Andrew McDaniel
+ * @brief Earliest-Deadline-First scheduling policy.
+ *
+ */
 #include "Scheduler.h"
 
 // Stub for Earliest-Deadline-First Scheduling.

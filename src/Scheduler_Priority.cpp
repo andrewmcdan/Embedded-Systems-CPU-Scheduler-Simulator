@@ -1,3 +1,11 @@
+/**
+ * @file Scheduler_Priority.cpp
+ * @author Andrew McDaniel
+ * @brief Implementation of a static priority scheduler.
+ *
+ * Orders ready tasks by configured priority levels, requeueing them on time-slice expiration
+ * and I/O completion.
+ */
 #include "Scheduler.h"
 
 #include <algorithm>

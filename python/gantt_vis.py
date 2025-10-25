@@ -1,3 +1,11 @@
+"""
+@file gantt_vis.py
+@author Andrew McDaniel
+@brief Generates Gantt chart visualisations for simulation timelines.
+
+Reads simulation traces and produces interactive Plotly timelines to illustrate core activity
+and task execution spans.
+"""
 #!/usr/bin/env python3
 """
 Helper script to generate an interactive core timeline (Gantt-style) visualization for a trace. 

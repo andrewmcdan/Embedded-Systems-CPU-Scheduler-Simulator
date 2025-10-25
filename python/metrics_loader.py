@@ -1,3 +1,11 @@
+"""
+@file metrics_loader.py
+@author Andrew McDaniel
+@brief Utilities for loading simulation traces and metrics into Python.
+
+Provides helper routines that parse JSON results into pandas DataFrames used by analysis
+notebooks and plotting utilities.
+"""
 # -*- coding: utf-8 -*-
 """
 Utilities for loading and visualizing scheduler simulation trace files.

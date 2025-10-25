@@ -1,3 +1,10 @@
+/**
+ * @file Scheduler_FCFS.cpp
+ * @author Andrew McDaniel
+ * @brief Implementation of the First-Come-First-Served scheduler.
+ *
+ * Provides a simple FIFO policy where tasks are executed in arrival order without preemption.
+ */
 #include "RunQueue.h"
 #include "Scheduler.h"
 #include <spdlog/spdlog.h>

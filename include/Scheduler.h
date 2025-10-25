@@ -1,3 +1,11 @@
+/**
+ * @file Scheduler.h
+ * @author Andrew McDaniel
+ * @brief Scheduler interface definitions and concrete scheduler declarations.
+ *
+ * Declares the base IScheduler contract alongside implementations such as FCFS, RR, SJF, and
+ * other policy variants used by the simulator.
+ */
 #pragma once
 
 #include <cstdint>

@@ -1,3 +1,11 @@
+/**
+ * @file SimulationEngine.h
+ * @author Andrew McDaniel
+ * @brief Core simulation engine declarations coordinating schedulers and events.
+ *
+ * Defines the SimulationEngine class responsible for executing tasks, dispatching events, and
+ * integrating metrics and workload definitions.
+ */
 #pragma once
 
 #include <memory>

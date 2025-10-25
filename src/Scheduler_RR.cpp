@@ -1,3 +1,11 @@
+/**
+ * @file Scheduler_RR.cpp
+ * @author Andrew McDaniel
+ * @brief Implementation of the Round-Robin scheduler.
+ *
+ * Delivers time-sliced execution where tasks share CPU through a fixed quantum before cycling
+ * back into the ready queue.
+ */
 #include "Scheduler.h"
 
 #include <algorithm>

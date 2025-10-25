@@ -1,3 +1,9 @@
+/**
+ * @file Scheduler_POSIX_RT.cpp
+ * @author Andrew McDaniel
+ * @brief POSIX real-time scheduling.
+ *
+ */
 #include "Scheduler.h"
 
 // Stub for POSIX Real-Time Scheduling (SCHED_FIFO / SCHED_RR variants).

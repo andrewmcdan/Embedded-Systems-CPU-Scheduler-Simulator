@@ -1,3 +1,11 @@
+/**
+ * @file Task.h
+ * @author Andrew McDaniel
+ * @brief Task data structures and helper utilities for the simulator.
+ *
+ * Describes Task, TaskState, and TaskType enumerations used to represent workloads across the
+ * scheduling policies and simulation engine.
+ */
 #pragma once
 
 #include <algorithm>

@@ -1,3 +1,11 @@
+/**
+ * @file RunQueue.h
+ * @author Andrew McDaniel
+ * @brief Run queue container abstractions for scheduler implementations.
+ *
+ * Provides a flexible queue wrapper supporting FIFO, priority, and custom ordering for tasks
+ * utilised by various scheduling strategies.
+ */
 #pragma once
 
 #include <queue>

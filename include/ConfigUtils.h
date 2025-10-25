@@ -1,3 +1,11 @@
+/**
+ * @file ConfigUtils.h
+ * @author Andrew McDaniel
+ * @brief Declarations for configuration parsing helpers used throughout the simulator.
+ *
+ * Exposes shared utilities that translate scenario and workload metadata into strongly typed
+ * values, centralising parsing logic for other components.
+ */
 #pragma once
 
 #include <cstdint>
@@ -7,7 +15,7 @@
 #include <string_view>
 #include <utility>
 
-namespace simUtils {
+namespace configUtils {
 
 using json = nlohmann::json;
 
@@ -32,4 +40,4 @@ int getIntOr(const json& obj, std::string_view key, int defaultValue);
 std::string getStringOr(const json& obj, std::string_view key, std::string defaultValue);
 bool getBoolOr(const json& obj, std::string_view key, bool defaultValue);
 
-} // namespace simUtils
+} // namespace configUtils

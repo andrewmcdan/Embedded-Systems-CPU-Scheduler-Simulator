@@ -1,3 +1,11 @@
+/**
+ * @file Event.h
+ * @author Andrew McDaniel
+ * @brief Event type declarations for the simulation timeline.
+ *
+ * Defines the event kinds emitted and consumed by the simulation engine along with supporting
+ * data structures and comparators.
+ */
 #pragma once
 
 #include <cstdint>

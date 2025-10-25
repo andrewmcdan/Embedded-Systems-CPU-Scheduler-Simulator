@@ -1,3 +1,11 @@
+/**
+ * @file MetricsCollector.cpp
+ * @author Andrew McDaniel
+ * @brief Implementation of the metrics collector and reporting pipeline.
+ *
+ * Records per-task lifecycle data, aggregates counters, and exports JSON reports and timeline
+ * traces for analysis tooling.
+ */
 #include "MetricsCollector.h"
 
 #include <algorithm>

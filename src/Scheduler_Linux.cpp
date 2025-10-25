@@ -1,3 +1,11 @@
+/**
+ * @file Scheduler_Linux.cpp
+ * @author Andrew McDaniel
+ * @brief Placeholder for a Linux-inspired scheduler policy.
+ *
+ * Captures future work to model Linux CFS-style behaviour with niceness weights and latency
+ * targets within the simulator.
+ */
 #include "Scheduler.h"
 
 // Stub for Linux-inspired scheduling (CFS / nice levels).

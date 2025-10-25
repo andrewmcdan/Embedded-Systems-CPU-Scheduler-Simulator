@@ -1,9 +1,11 @@
 /**
  * @file ConfigUtils.cpp
  * @author Andrew McDaniel
- * @brief Utility functions for the simulator
+ * @brief Implementation of configuration parsing utilities for scenarios and workloads.
+ *
+ * Converts JSON and YAML configuration data into strongly typed values consumed by the
+ * simulation engine and helper tooling.
  */
-
 #include "ConfigUtils.h"
 
 #include <algorithm>
@@ -11,14 +13,14 @@
 #include <cmath>
 #include <spdlog/spdlog.h>
 
-namespace simUtils {
+namespace configUtils {
 
 /**
  * @brief Try to get a numeric field from a JSON object
- * 
- * @param obj 
- * @param key 
- * @return std::optional<double> 
+ *
+ * @param obj
+ * @param key
+ * @return std::optional<double>
  */
 std::optional<double> tryGetNumber(const json& obj, std::string_view key)
 {
@@ -53,10 +55,10 @@ std::optional<double> tryGetNumber(const json& obj, std::string_view key)
 
 /**
  * @brief Try to get a boolean field from a JSON object
- * 
- * @param obj 
- * @param key 
- * @return std::optional<bool> 
+ *
+ * @param obj
+ * @param key
+ * @return std::optional<bool>
  */
 std::optional<bool> tryGetBool(const json& obj, std::string_view key)
 {
@@ -87,10 +89,10 @@ std::optional<bool> tryGetBool(const json& obj, std::string_view key)
 
 /**
  * @brief Try to get a string field from a JSON object
- * 
- * @param obj 
- * @param key 
- * @return std::optional<std::string> 
+ *
+ * @param obj
+ * @param key
+ * @return std::optional<std::string>
  */
 std::optional<std::string> tryGetString(const json& obj, std::string_view key)
 {
@@ -111,9 +113,9 @@ std::optional<std::string> tryGetString(const json& obj, std::string_view key)
 
 /**
  * @brief Convert a JSON node to a number if possible
- * 
- * @param node 
- * @return std::optional<double> 
+ *
+ * @param node
+ * @return std::optional<double>
  */
 std::optional<double> asNumber(const json& node)
 {
@@ -140,9 +142,9 @@ std::optional<double> asNumber(const json& node)
 // ---------- Duration Extraction Helpers ----------
 /**
  * @brief Convert a double value to milliseconds
- * 
- * @param value 
- * @return uint64_t 
+ *
+ * @param value
+ * @return uint64_t
  */
 uint64_t toMs(double value)
 {
@@ -151,9 +153,9 @@ uint64_t toMs(double value)
 
 /**
  * @brief Convert a double value to microseconds
- * 
- * @param value 
- * @return uint64_t 
+ *
+ * @param value
+ * @return uint64_t
  */
 uint64_t toUs(double value)
 {
@@ -162,11 +164,11 @@ uint64_t toUs(double value)
 
 /**
  * @brief Extract a duration range (min/max) in milliseconds from a JSON object
- * 
- * @param obj 
- * @param keyBase 
- * @param defaultRange 
- * @return std::pair<uint64_t, uint64_t> 
+ *
+ * @param obj
+ * @param keyBase
+ * @param defaultRange
+ * @return std::pair<uint64_t, uint64_t>
  */
 std::pair<uint64_t, uint64_t> extractDurationRangeMs(const json& obj, std::string_view keyBase, std::pair<uint64_t, uint64_t> defaultRange)
 {
@@ -293,11 +295,11 @@ std::pair<uint64_t, uint64_t> extractDurationRangeMs(const json& obj, std::strin
 
 /**
  * @brief Extract a duration in milliseconds from a JSON object
- * 
- * @param obj 
- * @param keyBase 
- * @param defaultValue 
- * @return uint64_t 
+ *
+ * @param obj
+ * @param keyBase
+ * @param defaultValue
+ * @return uint64_t
  */
 uint64_t extractDurationMs(const json& obj, std::string_view keyBase, uint64_t defaultValue)
 {
@@ -353,11 +355,11 @@ uint64_t extractDurationMs(const json& obj, std::string_view keyBase, uint64_t d
 
 /**
  * @brief Extract a duration in microseconds from a JSON object
- * 
- * @param obj 
- * @param keyBase 
- * @param defaultValue 
- * @return uint64_t 
+ *
+ * @param obj
+ * @param keyBase
+ * @param defaultValue
+ * @return uint64_t
  */
 uint64_t extractDurationUs(const json& obj, std::string_view keyBase, uint64_t defaultValue)
 {
@@ -388,11 +390,11 @@ uint64_t extractDurationUs(const json& obj, std::string_view keyBase, uint64_t d
 
 /**
  * @brief Get an from a JSON object or return a default value
- * 
- * @param obj 
- * @param key 
- * @param defaultValue 
- * @return int 
+ *
+ * @param obj
+ * @param key
+ * @param defaultValue
+ * @return int
  */
 int getIntOr(const json& obj, std::string_view key, int defaultValue)
 {
@@ -404,11 +406,11 @@ int getIntOr(const json& obj, std::string_view key, int defaultValue)
 
 /**
  * @brief Get a string from a JSON object or return a default value
- * 
- * @param obj 
- * @param key 
- * @param defaultValue 
- * @return std::string 
+ *
+ * @param obj
+ * @param key
+ * @param defaultValue
+ * @return std::string
  */
 std::string getStringOr(const json& obj, std::string_view key, std::string defaultValue)
 {
@@ -420,10 +422,10 @@ std::string getStringOr(const json& obj, std::string_view key, std::string defau
 
 /**
  * @brief Get a boolean from a JSON object or return a default value
- * 
- * @param obj 
- * @param key 
- * @param defaultValue 
+ *
+ * @param obj
+ * @param key
+ * @param defaultValue
  * @return bool
  */
 bool getBoolOr(const json& obj, std::string_view key, bool defaultValue)
@@ -434,4 +436,4 @@ bool getBoolOr(const json& obj, std::string_view key, bool defaultValue)
     return defaultValue;
 }
 
-} // namespace simUtils
+} // namespace configUtils

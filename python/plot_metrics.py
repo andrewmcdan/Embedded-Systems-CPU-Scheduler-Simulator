@@ -1,3 +1,11 @@
+"""
+@file plot_metrics.py
+@author Andrew McDaniel
+@brief Creates summary plots from simulation metrics.
+
+Supplies convenience functions that render utilization, latency, and classification charts from
+preprocessed metrics data.
+"""
 #!/usr/bin/env python3
 """
 Generate a set of metrics plots from a simulation trace file.

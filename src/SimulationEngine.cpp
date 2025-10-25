@@ -1,3 +1,11 @@
+/**
+ * @file SimulationEngine.cpp
+ * @author Andrew McDaniel
+ * @brief Implementation of the simulation engine orchestrating tasks and events.
+ *
+ * Loads workloads, schedules events, coordinates scheduler callbacks, and records metrics for
+ * later analysis.
+ */
 #include "SimulationEngine.h"
 #include <algorithm>
 #include <cmath>
@@ -16,10 +24,10 @@ namespace {
 
 /**
  * @brief Convert an optional numeric value to uint64_t, with fallback
- * 
- * @param value 
- * @param fallback 
- * @return uint64_t 
+ *
+ * @param value
+ * @param fallback
+ * @return uint64_t
  */
 uint64_t optionalNumberToUint(const std::optional<double>& value, uint64_t fallback)
 {
@@ -35,12 +43,12 @@ uint64_t optionalNumberToUint(const std::optional<double>& value, uint64_t fallb
 
 /**
  * @brief Apply jitter percentage to a base time
- * 
- * @param baseTimeMs 
- * @param jitterPercent 
- * @param occurrenceIndex 
- * @param periodMs 
- * @return uint64_t 
+ *
+ * @param baseTimeMs
+ * @param jitterPercent
+ * @param occurrenceIndex
+ * @param periodMs
+ * @return uint64_t
  */
 uint64_t applyJitterPercent(uint64_t baseTimeMs, uint64_t jitterPercent, size_t occurrenceIndex, uint64_t periodMs)
 {
@@ -61,10 +69,10 @@ uint64_t applyJitterPercent(uint64_t baseTimeMs, uint64_t jitterPercent, size_t 
 
 /**
  * @brief Select execution duration within a range based on occurrence index
- * 
- * @param range 
- * @param occurrenceIndex 
- * @return uint64_t 
+ *
+ * @param range
+ * @param occurrenceIndex
+ * @return uint64_t
  */
 uint64_t selectExecDurationMs(const std::pair<uint64_t, uint64_t>& range, size_t occurrenceIndex)
 {
@@ -79,11 +87,11 @@ uint64_t selectExecDurationMs(const std::pair<uint64_t, uint64_t>& range, size_t
 }
 
 /**
- * @brief Generate arrival schedule based on task configuration and horizon. 
- * 
- * @param taskConfig 
- * @param horizonMs 
- * @return std::vector<uint64_t> 
+ * @brief Generate arrival schedule based on task configuration and horizon.
+ *
+ * @param taskConfig
+ * @param horizonMs
+ * @return std::vector<uint64_t>
  */
 std::vector<uint64_t> generateArrivalSchedule(const json& taskConfig, uint64_t horizonMs)
 {
@@ -92,12 +100,12 @@ std::vector<uint64_t> generateArrivalSchedule(const json& taskConfig, uint64_t h
         return arrivals;
     }
 
-    const uint64_t startMs = simUtils::extractDurationMs(taskConfig, "start", simUtils::extractDurationMs(taskConfig, "arrival", 0));
+    const uint64_t startMs = configUtils::extractDurationMs(taskConfig, "start", configUtils::extractDurationMs(taskConfig, "arrival", 0));
     if (startMs > horizonMs) {
         return arrivals;
     }
 
-    const uint64_t jitterPercent = optionalNumberToUint(simUtils::tryGetNumber(taskConfig, "jitter_percent"), 0);
+    const uint64_t jitterPercent = optionalNumberToUint(configUtils::tryGetNumber(taskConfig, "jitter_percent"), 0);
 
     const json* arrivalPattern = nullptr;
     if (auto patternIt = taskConfig.find("arrival_pattern"); patternIt != taskConfig.end() && patternIt->is_object()) {
@@ -105,7 +113,7 @@ std::vector<uint64_t> generateArrivalSchedule(const json& taskConfig, uint64_t h
     }
 
     auto readDurationMs = [&](const json& obj, std::string_view key, uint64_t fallback) {
-        if (auto asDuration = simUtils::tryGetNumber(obj, key)) {
+        if (auto asDuration = configUtils::tryGetNumber(obj, key)) {
             return optionalNumberToUint(asDuration, fallback);
         }
         return fallback;
@@ -124,7 +132,7 @@ std::vector<uint64_t> generateArrivalSchedule(const json& taskConfig, uint64_t h
             if (intervalMs == 0) {
                 intervalMs = 1;
             }
-            const size_t burstSize = static_cast<size_t>(optionalNumberToUint(simUtils::tryGetNumber(*arrivalPattern, "burst_size"), 1));
+            const size_t burstSize = static_cast<size_t>(optionalNumberToUint(configUtils::tryGetNumber(*arrivalPattern, "burst_size"), 1));
             const uint64_t spacingMs = readDurationMs(*arrivalPattern, "burst_spacing_ms", 1);
             uint64_t burstStart = startMs;
             size_t burstIndex = 0;
@@ -139,11 +147,11 @@ std::vector<uint64_t> generateArrivalSchedule(const json& taskConfig, uint64_t h
                 }
             }
         } else if (patternType == "burst_every_s") {
-            uint64_t intervalMs = optionalNumberToUint(simUtils::tryGetNumber(*arrivalPattern, "value"), 1) * 1000;
+            uint64_t intervalMs = optionalNumberToUint(configUtils::tryGetNumber(*arrivalPattern, "value"), 1) * 1000;
             if (intervalMs == 0) {
                 intervalMs = 1000;
             }
-            const size_t burstCount = static_cast<size_t>(optionalNumberToUint(simUtils::tryGetNumber(*arrivalPattern, "burst_count"), 1));
+            const size_t burstCount = static_cast<size_t>(optionalNumberToUint(configUtils::tryGetNumber(*arrivalPattern, "burst_count"), 1));
             const uint64_t spacingMs = readDurationMs(*arrivalPattern, "burst_spacing_ms", 1);
             uint64_t burstStart = startMs;
             size_t burstIndex = 0;
@@ -155,9 +163,9 @@ std::vector<uint64_t> generateArrivalSchedule(const json& taskConfig, uint64_t h
                 burstStart = startMs + intervalMs * burstIndex;
             }
         } else {
-            uint64_t periodMs = simUtils::extractDurationMs(taskConfig, "period", 0);
+            uint64_t periodMs = configUtils::extractDurationMs(taskConfig, "period", 0);
             if (patternType == "periodic") {
-                periodMs = simUtils::extractDurationMs(*arrivalPattern, "period", periodMs);
+                periodMs = configUtils::extractDurationMs(*arrivalPattern, "period", periodMs);
             } else if (patternType == "poisson") {
                 periodMs = readDurationMs(*arrivalPattern, "mean_ms", periodMs ? periodMs : 50);
             }
@@ -174,7 +182,7 @@ std::vector<uint64_t> generateArrivalSchedule(const json& taskConfig, uint64_t h
             }
         }
     } else {
-        uint64_t periodMs = simUtils::extractDurationMs(taskConfig, "period", 0);
+        uint64_t periodMs = configUtils::extractDurationMs(taskConfig, "period", 0);
         if (periodMs == 0) {
             appendArrival(startMs);
         } else {
@@ -197,7 +205,7 @@ std::vector<uint64_t> generateArrivalSchedule(const json& taskConfig, uint64_t h
 
 /**
  * @brief Construct a new SimulationEngine object.
- * 
+ *
  * @param scheduler Pointer to scheduler instance to use.
  */
 SimulationEngine::SimulationEngine(std::unique_ptr<IScheduler> scheduler)
@@ -213,9 +221,9 @@ SimulationEngine::SimulationEngine(std::unique_ptr<IScheduler> scheduler)
 
 /**
  * @brief Load workload and schedule task arrivals
- * 
- * @param workloadConfig 
- * @param horizonMs 
+ *
+ * @param workloadConfig
+ * @param horizonMs
  */
 void SimulationEngine::loadWorkload(const json& workloadConfig, uint64_t horizonMs)
 {
@@ -259,12 +267,12 @@ void SimulationEngine::loadWorkload(const json& workloadConfig, uint64_t horizon
         const json& taskConfig = *entry.config;
         const std::vector<uint64_t>& arrivals = entry.arrivals;
 
-        const std::string baseName = simUtils::getStringOr(taskConfig, "name", "task_template");
-        const std::string taskClass = simUtils::getStringOr(taskConfig, "class", "background");
+        const std::string baseName = configUtils::getStringOr(taskConfig, "name", "task_template");
+        const std::string taskClass = configUtils::getStringOr(taskConfig, "class", "background");
         const TaskType taskType = taskTypeFromString(taskClass);
-        const int priority = simUtils::getIntOr(taskConfig, "priority", 5);
-        const auto execRangeRaw = simUtils::extractDurationRangeMs(taskConfig, "exec", { 5u, 5u });
-        const uint64_t deadlineMs = simUtils::extractDurationMs(taskConfig, "deadline", 0);
+        const int priority = configUtils::getIntOr(taskConfig, "priority", 5);
+        const auto execRangeRaw = configUtils::extractDurationRangeMs(taskConfig, "exec", { 5u, 5u });
+        const uint64_t deadlineMs = configUtils::extractDurationMs(taskConfig, "deadline", 0);
 
         size_t occurrenceIndex = 0;
         for (uint64_t arrivalMs : arrivals) {
@@ -302,9 +310,9 @@ void SimulationEngine::loadWorkload(const json& workloadConfig, uint64_t horizon
 
 /**
  * @brief Configure simulation scenario parameters
- * 
- * @param scenarioConfig 
- * @param plannedDurationMs 
+ *
+ * @param scenarioConfig
+ * @param plannedDurationMs
  */
 void SimulationEngine::configureScenario(const json& scenarioConfig, uint64_t plannedDurationMs)
 {
@@ -316,11 +324,11 @@ void SimulationEngine::configureScenario(const json& scenarioConfig, uint64_t pl
     const json timingCfg = scenarioConfig.value("timing", json::object());
 
     // Extract scenario parameters. Fall back to defaults or previously set values.
-    this->systemName_ = simUtils::getStringOr(systemCfg, "name", this->systemName_);
-    this->clockSpeedMhz_ = simUtils::tryGetNumber(systemCfg, "clock_speed_mhz").value_or(this->clockSpeedMhz_);
-    this->basePowerWatts_ = simUtils::tryGetNumber(systemCfg, "base_power_watts").value_or(this->basePowerWatts_);
-    this->maxPowerWatts_ = simUtils::tryGetNumber(systemCfg, "max_power_watts").value_or(this->maxPowerWatts_);
-    this->idlePowerWatts_ = simUtils::tryGetNumber(systemCfg, "idle_power_watts").value_or(this->idlePowerWatts_);
+    this->systemName_ = configUtils::getStringOr(systemCfg, "name", this->systemName_);
+    this->clockSpeedMhz_ = configUtils::tryGetNumber(systemCfg, "clock_speed_mhz").value_or(this->clockSpeedMhz_);
+    this->basePowerWatts_ = configUtils::tryGetNumber(systemCfg, "base_power_watts").value_or(this->basePowerWatts_);
+    this->maxPowerWatts_ = configUtils::tryGetNumber(systemCfg, "max_power_watts").value_or(this->maxPowerWatts_);
+    this->idlePowerWatts_ = configUtils::tryGetNumber(systemCfg, "idle_power_watts").value_or(this->idlePowerWatts_);
     this->plannedRunDurationMs_ = plannedDurationMs;
 
     // Resolve 'cores' from several possible config locations (falls back to 1.0)
@@ -335,8 +343,9 @@ void SimulationEngine::configureScenario(const json& scenarioConfig, uint64_t pl
     std::optional<double> resolvedCores;
     for (const auto& src : coreSources) {
         const json* obj = src.first;
-        if (!obj) continue;
-        if (auto v = simUtils::tryGetNumber(*obj, src.second)) {
+        if (!obj)
+            continue;
+        if (auto v = configUtils::tryGetNumber(*obj, src.second)) {
             resolvedCores = v;
             break;
         }
@@ -346,19 +355,19 @@ void SimulationEngine::configureScenario(const json& scenarioConfig, uint64_t pl
 
     this->numCores_ = static_cast<size_t>(std::max<int>(1, static_cast<int>(std::llround(coresCandidate))));
 
-    const uint64_t scenarioContextSwitchUs = simUtils::extractDurationUs(timingCfg, "context_switch_cost",
-        simUtils::extractDurationUs(scenarioConfig, "context_switch_cost", this->contextSwitchCostUs_));
-    this->contextSwitchCostUs_ = simUtils::extractDurationUs(schedulerCfg, "context_switch_cost", scenarioContextSwitchUs);
+    const uint64_t scenarioContextSwitchUs = configUtils::extractDurationUs(timingCfg, "context_switch_cost",
+        configUtils::extractDurationUs(scenarioConfig, "context_switch_cost", this->contextSwitchCostUs_));
+    this->contextSwitchCostUs_ = configUtils::extractDurationUs(schedulerCfg, "context_switch_cost", scenarioContextSwitchUs);
 
-    this->ioCompletionQuantumUs_ = simUtils::extractDurationUs(timingCfg, "io_completion_quantum",
-        simUtils::extractDurationUs(scenarioConfig, "io_completion_quantum", this->ioCompletionQuantumUs_));
-    this->tickIntervalUs_ = simUtils::extractDurationUs(timingCfg, "tick_interval",
-        simUtils::extractDurationUs(scenarioConfig, "tick_interval", this->tickIntervalUs_));
+    this->ioCompletionQuantumUs_ = configUtils::extractDurationUs(timingCfg, "io_completion_quantum",
+        configUtils::extractDurationUs(scenarioConfig, "io_completion_quantum", this->ioCompletionQuantumUs_));
+    this->tickIntervalUs_ = configUtils::extractDurationUs(timingCfg, "tick_interval",
+        configUtils::extractDurationUs(scenarioConfig, "tick_interval", this->tickIntervalUs_));
     this->tickIntervalMs_ = this->tickIntervalUs_ == 0 ? 0 : std::max<uint64_t>(1, (this->tickIntervalUs_ + 999) / 1000);
 
-    this->verbose_ = simUtils::getBoolOr(schedulerCfg, "verbose",
-        simUtils::getBoolOr(loggingCfg, "verbose",
-            simUtils::getBoolOr(scenarioConfig, "verbose", false)));
+    this->verbose_ = configUtils::getBoolOr(schedulerCfg, "verbose",
+        configUtils::getBoolOr(loggingCfg, "verbose",
+            configUtils::getBoolOr(scenarioConfig, "verbose", false)));
 
     this->cores_.resize(this->numCores_);
     for (auto& core : this->cores_) {
@@ -392,8 +401,8 @@ void SimulationEngine::configureScenario(const json& scenarioConfig, uint64_t pl
 
 /**
  * @brief Run the full simulation for a given duration (ms)
- * 
- * @param durationMs 
+ *
+ * @param durationMs
  */
 void SimulationEngine::run(uint64_t durationMs)
 {
@@ -447,8 +456,8 @@ void SimulationEngine::run(uint64_t durationMs)
 
 /**
  * @brief Handle a scheduled event
- * 
- * @param eventRecord 
+ *
+ * @param eventRecord
  */
 void SimulationEngine::handleEvent(const Event& eventRecord)
 {
@@ -521,7 +530,7 @@ void SimulationEngine::handleEvent(const Event& eventRecord)
 
 /**
  * @brief Dispatch tasks to available cores
- * 
+ *
  */
 void SimulationEngine::dispatchTasks()
 {
@@ -592,8 +601,8 @@ void SimulationEngine::dispatchTasks()
 
 /**
  * @brief Export simulation results as JSON
- * 
- * @return json 
+ *
+ * @return json
  */
 json SimulationEngine::exportResults() const
 {
@@ -602,8 +611,8 @@ json SimulationEngine::exportResults() const
 
 /**
  * @brief Schedule the next timer tick event
- * 
- * @param startTimeMs 
+ *
+ * @param startTimeMs
  */
 void SimulationEngine::scheduleTimerTick(uint64_t startTimeMs)
 {
@@ -617,8 +626,8 @@ void SimulationEngine::scheduleTimerTick(uint64_t startTimeMs)
 
 /**
  * @brief Get current core assignments as a vector of task IDs (-1 for idle)
- * 
- * @return std::vector<int> 
+ *
+ * @return std::vector<int>
  */
 std::vector<int> SimulationEngine::currentCoreAssignments() const
 {

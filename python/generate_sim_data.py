@@ -1,3 +1,11 @@
+"""
+@file generate_sim_data.py
+@author Andrew McDaniel
+@brief Generates scenario and workload permutations for simulation runs.
+
+Combines template YAML files with matrixed parameter overrides to produce batch-ready input
+configurations for the simulator.
+"""
 #!/usr/bin/env python3
 """
 Workload matrix generator.

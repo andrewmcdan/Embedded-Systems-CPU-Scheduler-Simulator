@@ -1,3 +1,11 @@
+/**
+ * @file MetricsCollector.h
+ * @author Andrew McDaniel
+ * @brief Interface for collecting simulation metrics and timeline data.
+ *
+ * Declares the MetricsCollector class which captures per-task statistics, aggregated counters,
+ * and event timelines used in reports.
+ */
 #pragma once
 
 #include <cstdint>

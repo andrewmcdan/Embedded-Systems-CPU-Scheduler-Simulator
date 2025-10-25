@@ -1,3 +1,9 @@
+/**
+ * @file Scheduler_ProportionalShare.cpp
+ * @author Andrew McDaniel
+ * @brief Proportional share (weighted fair) scheduling.
+ *
+ */
 #include "Scheduler.h"
 
 // Stub for Proportional Share / Weighted Fair scheduling.

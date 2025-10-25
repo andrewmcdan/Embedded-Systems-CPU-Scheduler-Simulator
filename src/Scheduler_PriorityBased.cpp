@@ -1,3 +1,9 @@
+/**
+ * @file Scheduler_PriorityBased.cpp
+ * @author Andrew McDaniel
+ * @brief Priority-based scheduling with aging.
+ *
+ */
 #include "Scheduler.h"
 
 // Stub for Priority-Based Scheduling with aging / dynamic adjustments.

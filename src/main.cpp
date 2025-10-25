@@ -1,3 +1,11 @@
+/**
+ * @file main.cpp
+ * @author Andrew McDaniel
+ * @brief Command-line entry point for the scheduler simulator.
+ *
+ * Parses arguments, configures logging, loads scenarios and workloads, and executes selected
+ * scheduling policies while exporting results.
+ */
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -441,7 +449,7 @@ int main(int argc, char* argv[])
         scenarioConfig = loadConfig(scenarioPath);
         SPDLOG_TRACE("Scenario config loaded: {} keys", scenarioConfig.is_object() ? scenarioConfig.size() : 0);
         const json systemCfg = scenarioConfig.value("system", json::object());
-        scenarioRunDurationMs = simUtils::extractDurationMs(systemCfg, "run_duration", 0);
+        scenarioRunDurationMs = configUtils::extractDurationMs(systemCfg, "run_duration", 0);
     } catch (const std::exception& e) {
         SPDLOG_WARN("Failed to load scenario config '{}': {} (using defaults)", scenarioPath, e.what());
         scenarioConfig = json::object();

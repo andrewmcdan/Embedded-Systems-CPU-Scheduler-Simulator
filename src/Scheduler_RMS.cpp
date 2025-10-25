@@ -1,3 +1,9 @@
+/**
+ * @file Scheduler_RMS.cpp
+ * @author Andrew McDaniel
+ * @brief Rate-Monotonic Scheduling.
+ *
+ */
 #include "Scheduler.h"
 
 // Stub for Rate-Monotonic Scheduling.

@@ -1,3 +1,11 @@
+/**
+ * @file Scheduler_MLFQ.cpp
+ * @author Andrew McDaniel
+ * @brief Implementation of the Multi-Level Feedback Queue scheduler.
+ *
+ * Manages multiple priority queues with dynamic promotion and demotion to balance interactive
+ * responsiveness and throughput.
+ */
 #include "Scheduler.h"
 
 #include <algorithm>

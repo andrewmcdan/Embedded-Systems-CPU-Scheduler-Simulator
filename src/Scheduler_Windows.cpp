@@ -1,3 +1,10 @@
+/**
+ * @file Scheduler_Windows.cpp
+ * @author 
+ * @brief Windows-inspired scheduling policy.
+ *
+ * 
+ */
 #include "Scheduler.h"
 
 // Stub for Windows-inspired scheduling (priority classes + quanta).

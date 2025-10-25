@@ -1,14 +1,11 @@
 /**
  * @file Scheduler_SJF.cpp
  * @author Andrew McDaniel
- * @brief Implementation of Shortest-Job-First (SJF) Scheduler.
- * 
- * Shortest-Job-First scheduling selects the task with the smallest expected CPU
- * burst time from the ready queue. This implementation is non-preemptive; once a
- * task is dispatched, it runs to completion or until it performs I/O.
- * 
+ * @brief Implementation of the Shortest-Job-First scheduler.
+ *
+ * Selects the task with the smallest expected CPU burst from the ready queue, dispatching it
+ * non-preemptively until completion or I/O.
  */
-
 #include "Scheduler.h"
 
 #include <algorithm>
