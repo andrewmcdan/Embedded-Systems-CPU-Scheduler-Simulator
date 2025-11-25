@@ -82,6 +82,17 @@ def ticks_dataFrame(trace: TraceDict) -> pd.DataFrame:
     return frame
 
 
+# Convenience aliases (dashboards may import the *_df variants)
+def task_lifecycle_df(trace: TraceDict) -> pd.DataFrame:
+    """Alias for task_lifecycle_dataFrame for backwards compatibility."""
+    return task_lifecycle_dataFrame(trace)
+
+
+def ticks_df(trace: TraceDict) -> pd.DataFrame:
+    """Alias for ticks_dataFrame for backwards compatibility."""
+    return ticks_dataFrame(trace)
+
+
 def counter_dict(trace: TraceDict) -> dict:
     """Shortcut for the top-level counters dictionary."""
     return dict(trace.get("counters", {}))
@@ -103,6 +114,69 @@ def _adjust_end_time(start_ms: float, end_ms: float) -> float:
         # add a minimal sliver (0.1 ms) so the bar is visible when rendered
         return start_ms + 0.1
     return end_ms
+
+
+def _utilization_from_timeline(trace: TraceDict) -> pd.DataFrame:
+    """Derive a utilization series when explicit tick samples are absent."""
+    base = timeline_dataFrame(trace)
+    if base.empty:
+        return pd.DataFrame()
+
+    frame = base[base["core"].notna()].copy()
+    if frame.empty:
+        return pd.DataFrame()
+
+    frame["start_ms"] = frame["start_ms"].astype(float)
+    frame["end_ms"] = frame["end_ms"].astype(float)
+    frame["core"] = frame["core"].astype(int)
+    frame["busy"] = frame["event"] != "core_idle"
+
+    total_cores = int(frame["core"].max()) + 1
+    summary = summary_dict(trace)
+    sim_start = float(summary.get("simulation_start_ms", frame["start_ms"].min()))
+    sim_end = float(summary.get("simulation_end_ms", frame["end_ms"].max()))
+    if sim_end < sim_start:
+        sim_end = frame["end_ms"].max()
+
+    # Build sweep-line events for busy intervals only
+    events: list[tuple[float, int]] = []
+    for row in frame.itertuples():
+        if not row.busy:
+            continue
+        events.append((row.start_ms, 1))
+        events.append((row.end_ms, -1))
+
+    if not events:
+        util = summary.get("cpu_utilization", {})
+        avg = util.get("average") if isinstance(util, dict) else None
+        if avg is None:
+            return pd.DataFrame()
+        return pd.DataFrame({
+            "timestamp_ms": [sim_start, sim_end],
+            "utilization": [avg, avg],
+            "timestamp_dt": pd.to_datetime([sim_start, sim_end], unit="ms"),
+        })
+
+    events.sort()
+    samples = []
+    busy = 0
+    last_time = sim_start
+    for ts, delta in events:
+        if ts > last_time:
+            util = max(0.0, busy) / max(1, total_cores)
+            samples.append({"timestamp_ms": last_time, "utilization": util})
+            samples.append({"timestamp_ms": ts, "utilization": util})
+        busy += delta
+        last_time = ts
+
+    if last_time < sim_end:
+        util = max(0.0, busy) / max(1, total_cores)
+        samples.append({"timestamp_ms": last_time, "utilization": util})
+        samples.append({"timestamp_ms": sim_end, "utilization": util})
+
+    result = pd.DataFrame(samples)
+    result["timestamp_dt"] = pd.to_datetime(result["timestamp_ms"], unit="ms")
+    return result
 
 
 # --- Visualization functions ---
@@ -243,14 +317,26 @@ def make_cpu_utilization_figure(trace: TraceDict, rolling_window: int = 50) -> g
     ticks = ticks_dataFrame(trace)
     fig = go.Figure()
     if ticks.empty:
-        fig.update_layout(
-            title="CPU utilization (no tick samples available)",
-            xaxis_title="Simulation time",
-            yaxis_title="Utilization",
+        derived = _utilization_from_timeline(trace)
+        if derived.empty:
+            fig.update_layout(
+                title="CPU utilization (no tick samples available)",
+                xaxis_title="Simulation time",
+                yaxis_title="Utilization",
+            )
+            return fig
+
+        fig = px.line(
+            derived,
+            x="timestamp_dt",
+            y="utilization",
+            title="CPU utilization over time (derived from timeline)",
+            labels={"timestamp_dt": "Simulation time", "utilization": "Utilization"},
         )
+        fig.update_layout(yaxis=dict(range=[0, 1]))
         return fig
 
-    # Calculate utilization
+    # Calculate utilization from tick samples
     ticks = ticks.copy()
     total = ticks["cores_total"].replace(0, pd.NA).astype("Float64")
     util = ticks["cores_busy"].astype(float) / total
@@ -366,7 +452,9 @@ __all__ = [
     "load_trace",
     "timeline_dataFrame",
     "task_lifecycle_dataFrame",
+    "task_lifecycle_df",
     "ticks_dataFrame",
+    "ticks_df",
     "counter_dict",
     "summary_dict",
     "config_dict",

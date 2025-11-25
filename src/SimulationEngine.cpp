@@ -363,6 +363,10 @@ void SimulationEngine::configureScenario(const json& scenarioConfig, uint64_t pl
         configUtils::extractDurationUs(scenarioConfig, "io_completion_quantum", this->ioCompletionQuantumUs_));
     this->tickIntervalUs_ = configUtils::extractDurationUs(timingCfg, "tick_interval",
         configUtils::extractDurationUs(scenarioConfig, "tick_interval", this->tickIntervalUs_));
+    if (this->tickIntervalUs_ == 0) {
+        // Ensure tick samples exist for dashboards even if the scenario omits tick_interval
+        this->tickIntervalUs_ = 1000; // 1 ms default
+    }
     this->tickIntervalMs_ = this->tickIntervalUs_ == 0 ? 0 : std::max<uint64_t>(1, (this->tickIntervalUs_ + 999) / 1000);
 
     this->verbose_ = configUtils::getBoolOr(schedulerCfg, "verbose",

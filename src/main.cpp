@@ -214,6 +214,31 @@ std::unique_ptr<IScheduler> createScheduler(const std::string& policy)
     if (policy == "priority" || policy == "priority_scheduling" || policy == "priority-scheduling") {
         return std::make_unique<PriorityScheduler>();
     }
+    if (policy == "edf" || policy == "earliest_deadline_first" || policy == "earliest-deadline-first") {
+        return std::make_unique<EDFScheduler>();
+    }
+    if (policy == "linux" || policy == "cfs" || policy == "cfs_linux") {
+        return std::make_unique<LinuxScheduler>();
+    }
+    if (policy == "mlq" || policy == "multi_level_queue" || policy == "multi-level-queue") {
+        return std::make_unique<MLQScheduler>();
+    }
+    if (policy == "posix_rt" || policy == "posix-rt" || policy == "rt" || policy == "sched_fifo" || policy == "sched_rr") {
+        const bool rrMode = (policy == "sched_rr");
+        return std::make_unique<PosixRTScheduler>(rrMode);
+    }
+    if (policy == "priority_based" || policy == "priority-aging" || policy == "priority_aging") {
+        return std::make_unique<PriorityAgingScheduler>();
+    }
+    if (policy == "proportional" || policy == "proportional_share" || policy == "weighted_fair") {
+        return std::make_unique<ProportionalShareScheduler>();
+    }
+    if (policy == "rms" || policy == "rate_monotonic" || policy == "rate-monotonic") {
+        return std::make_unique<RMSScheduler>();
+    }
+    if (policy == "windows" || policy == "win" || policy == "win32") {
+        return std::make_unique<WindowsScheduler>();
+    }
     if (policy == "rr" || policy == "round_robin" || policy == "round-robin") {
         return std::make_unique<RRScheduler>();
     }
