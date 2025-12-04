@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -156,6 +157,100 @@ std::vector<std::string> parsePolicies(const std::string& rawPolicies)
     return result;
 }
 
+struct PolicyDescriptor {
+    std::string canonicalName;
+    std::vector<std::string> aliases;
+    std::function<std::unique_ptr<IScheduler>(const std::string&)> factory;
+};
+
+const std::vector<PolicyDescriptor> kPolicyDescriptors = {
+    { "fcfs", {}, [](const std::string&) { return std::make_unique<FCFSScheduler>(); } },
+    { "sjf", { "shortest_job_first", "shortest-job-first" }, [](const std::string&) { return std::make_unique<SJFScheduler>(); } },
+    { "priority", { "priority_scheduling", "priority-scheduling" }, [](const std::string&) { return std::make_unique<PriorityScheduler>(); } },
+    { "edf", { "earliest_deadline_first", "earliest-deadline-first" }, [](const std::string&) { return std::make_unique<EDFScheduler>(); } },
+    { "linux", { "cfs", "cfs_linux" }, [](const std::string&) { return std::make_unique<LinuxScheduler>(); } },
+    { "mlq", { "multi_level_queue", "multi-level-queue" }, [](const std::string&) { return std::make_unique<MLQScheduler>(); } },
+    { "posix_rt", { "posix-rt", "rt", "sched_fifo", "sched_rr" }, [](const std::string& matched) {
+        const bool rrMode = (matched == "sched_rr");
+        return std::make_unique<PosixRTScheduler>(rrMode);
+    } },
+    { "priority_based", { "priority-aging", "priority_aging" }, [](const std::string&) { return std::make_unique<PriorityAgingScheduler>(); } },
+    { "proportional", { "proportional_share", "weighted_fair" }, [](const std::string&) { return std::make_unique<ProportionalShareScheduler>(); } },
+    { "rms", { "rate_monotonic", "rate-monotonic" }, [](const std::string&) { return std::make_unique<RMSScheduler>(); } },
+    { "windows", { "win", "win32" }, [](const std::string&) { return std::make_unique<WindowsScheduler>(); } },
+    { "rr", { "round_robin", "round-robin" }, [](const std::string&) { return std::make_unique<RRScheduler>(); } },
+    { "mlfq", {}, [](const std::string&) { return std::make_unique<MLFQScheduler>(); } },
+};
+
+bool matchesPolicy(const PolicyDescriptor& descriptor, const std::string& normalizedPolicy)
+{
+    if (normalizedPolicy == descriptor.canonicalName) {
+        return true;
+    }
+    return std::find(descriptor.aliases.begin(), descriptor.aliases.end(), normalizedPolicy) != descriptor.aliases.end();
+}
+
+const PolicyDescriptor* findPolicyDescriptor(const std::string& normalizedPolicy)
+{
+    for (const auto& descriptor : kPolicyDescriptors) {
+        if (matchesPolicy(descriptor, normalizedPolicy)) {
+            return &descriptor;
+        }
+    }
+    return nullptr;
+}
+
+std::string canonicalPolicyList()
+{
+    std::vector<std::string> canonicalNames;
+    canonicalNames.reserve(kPolicyDescriptors.size());
+    for (const auto& descriptor : kPolicyDescriptors) {
+        canonicalNames.push_back(descriptor.canonicalName);
+    }
+    std::sort(canonicalNames.begin(), canonicalNames.end());
+
+    std::string joined;
+    for (size_t i = 0; i < canonicalNames.size(); ++i) {
+        if (i != 0) {
+            joined += ", ";
+        }
+        joined += canonicalNames[i];
+    }
+
+    return joined;
+}
+
+std::string aliasPolicyList()
+{
+    std::vector<std::string> aliases;
+    for (const auto& descriptor : kPolicyDescriptors) {
+        aliases.insert(aliases.end(), descriptor.aliases.begin(), descriptor.aliases.end());
+    }
+    std::sort(aliases.begin(), aliases.end());
+    aliases.erase(std::unique(aliases.begin(), aliases.end()), aliases.end());
+
+    std::string joined;
+    for (size_t i = 0; i < aliases.size(); ++i) {
+        if (i != 0) {
+            joined += ", ";
+        }
+        joined += aliases[i];
+    }
+    return joined;
+}
+
+std::string buildPolicyHelpText()
+{
+    const std::string canonical = canonicalPolicyList();
+    const std::string aliases = aliasPolicyList();
+
+    std::string help = "Scheduling policy to use (comma-separated to run multiple): " + canonical;
+    if (!aliases.empty()) {
+        help += ". Aliases also accepted: " + aliases;
+    }
+    return help;
+}
+
 spdlog::level::level_enum parseLogLevel(const std::string& rawValue)
 {
     std::string lowered = trimCopy(rawValue);
@@ -205,47 +300,12 @@ std::string logLevelToString(spdlog::level::level_enum level)
 
 std::unique_ptr<IScheduler> createScheduler(const std::string& policy)
 {
-    if (policy == "fcfs") {
-        return std::make_unique<FCFSScheduler>();
+    const std::string normalized = normalizePolicy(policy);
+    const PolicyDescriptor* descriptor = findPolicyDescriptor(normalized);
+    if (!descriptor) {
+        return nullptr;
     }
-    if (policy == "sjf" || policy == "shortest_job_first" || policy == "shortest-job-first") {
-        return std::make_unique<SJFScheduler>();
-    }
-    if (policy == "priority" || policy == "priority_scheduling" || policy == "priority-scheduling") {
-        return std::make_unique<PriorityScheduler>();
-    }
-    if (policy == "edf" || policy == "earliest_deadline_first" || policy == "earliest-deadline-first") {
-        return std::make_unique<EDFScheduler>();
-    }
-    if (policy == "linux" || policy == "cfs" || policy == "cfs_linux") {
-        return std::make_unique<LinuxScheduler>();
-    }
-    if (policy == "mlq" || policy == "multi_level_queue" || policy == "multi-level-queue") {
-        return std::make_unique<MLQScheduler>();
-    }
-    if (policy == "posix_rt" || policy == "posix-rt" || policy == "rt" || policy == "sched_fifo" || policy == "sched_rr") {
-        const bool rrMode = (policy == "sched_rr");
-        return std::make_unique<PosixRTScheduler>(rrMode);
-    }
-    if (policy == "priority_based" || policy == "priority-aging" || policy == "priority_aging") {
-        return std::make_unique<PriorityAgingScheduler>();
-    }
-    if (policy == "proportional" || policy == "proportional_share" || policy == "weighted_fair") {
-        return std::make_unique<ProportionalShareScheduler>();
-    }
-    if (policy == "rms" || policy == "rate_monotonic" || policy == "rate-monotonic") {
-        return std::make_unique<RMSScheduler>();
-    }
-    if (policy == "windows" || policy == "win" || policy == "win32") {
-        return std::make_unique<WindowsScheduler>();
-    }
-    if (policy == "rr" || policy == "round_robin" || policy == "round-robin") {
-        return std::make_unique<RRScheduler>();
-    }
-    if (policy == "mlfq") {
-        return std::make_unique<MLFQScheduler>();
-    }
-    return nullptr;
+    return descriptor->factory(normalized);
 }
 
 std::filesystem::path deriveOutputPath(const std::filesystem::path& basePath, const std::string& policy, bool multi)
@@ -288,7 +348,7 @@ int main(int argc, char* argv[])
         .default_value(std::string("data/scenarios/scenario_1.yml"));
 
     program.add_argument("--scheduler_policy")
-        .help("Scheduling policy to use: fcfs, sjf, srtf, rr, priority, mlfq, edf")
+        .help(buildPolicyHelpText())
         .default_value(std::string("fcfs"));
 
     program.add_argument("--duration")
@@ -539,7 +599,7 @@ int main(int argc, char* argv[])
 
         auto scheduler = createScheduler(policy);
         if (!scheduler) {
-            SPDLOG_ERROR("Unknown scheduler policy '{}'", policy);
+            SPDLOG_ERROR("Unknown scheduler policy '{}' (supported: {})", policy, canonicalPolicyList());
             ++failures;
             continue;
         }

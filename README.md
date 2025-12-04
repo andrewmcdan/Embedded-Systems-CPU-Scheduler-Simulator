@@ -3,7 +3,7 @@
 Simulator for exploring CPU scheduling policies on embedded-style workloads. It models task arrivals, dispatch decisions, I/O completions, timer ticks, and exports rich JSON traces for offline analysis and dashboards.
 
 ## Features
-- Multiple scheduling algorithms: FCFS, SJF, Priority, Round Robin, MLFQ, EDF (implemented), plus placeholders for RMS, Linux/CFS-inspired, MLQ, Proportional Share, POSIX RT, Windows.
+- Multiple scheduling algorithms: FCFS, SJF, Priority, Round Robin, MLFQ, EDF, Linux/CFS-inspired, MLQ, Proportional Share, POSIX RT (FIFO/RR), Windows, Priority Aging, RMS.
 - Configurable workloads and scenarios via JSON/YAML (see `data/`).
 - Metrics and traces: per-task lifecycle, timeline events, tick samples, summary stats.
 - Python notebooks for batch runs (`python/batch_runner.ipynb`) and dashboards (`python/dashboard.ipynb`).
@@ -39,7 +39,7 @@ Basic run with defaults:
 ```
 
 Key CLI flags (see `main.cpp` for full list):
-- `--scheduler_policy` comma-separated policies (e.g., `fcfs,mlfq,edf`).
+- `--scheduler_policy` comma-separated policies (e.g., `fcfs,mlfq,edf`; supported canonicals: fcfs, sjf, priority, rr, mlfq, mlq, edf, linux, posix_rt, priority_based, proportional, rms, windows).
 - `--workload_file` / `--scenario_file` JSON or YAML inputs.
 - `--duration` simulation length in ms.
 - `--out_file` JSON trace path; `--results_subdir` for batch naming.
@@ -53,11 +53,18 @@ Key CLI flags (see `main.cpp` for full list):
 
 ## Scheduling Policies (implemented)
 - FCFS (`fcfs`)
-- Shortest Job First (`sjf`)
-- Priority (`priority`)
-- Round Robin (`rr`)
+- Shortest Job First (`sjf`; aliases: `shortest_job_first`, `shortest-job-first`)
+- Priority (`priority`; aliases: `priority_scheduling`, `priority-scheduling`)
+- Round Robin (`rr`; aliases: `round_robin`, `round-robin`)
+- Multi-Level Queue (`mlq`; aliases: `multi_level_queue`, `multi-level-queue`)
 - Multi-Level Feedback Queue (`mlfq`)
-- Earliest Deadline First (`edf`) – supports relative or absolute deadlines via constructor; CLI uses relative-to-arrival by default.
+- Earliest Deadline First (`edf`; aliases: `earliest_deadline_first`, `earliest-deadline-first`) – supports relative or absolute deadlines via constructor; CLI uses relative-to-arrival by default.
+- Linux/CFS-inspired (`linux`; aliases: `cfs`, `cfs_linux`)
+- POSIX RT (`posix_rt`; aliases: `posix-rt`, `rt`, `sched_fifo`, `sched_rr`)
+- Priority Aging (`priority_based`; aliases: `priority-aging`, `priority_aging`)
+- Proportional Share (`proportional`; aliases: `proportional_share`, `weighted_fair`)
+- Rate Monotonic (`rms`; aliases: `rate_monotonic`, `rate-monotonic`)
+- Windows-style (`windows`; aliases: `win`, `win32`)
 
 ## Metrics and Output
 `MetricsCollector` writes `trace.json` with:
