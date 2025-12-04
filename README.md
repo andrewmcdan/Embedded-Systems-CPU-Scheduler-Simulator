@@ -46,6 +46,59 @@ Key CLI flags (see `main.cpp` for full list):
 - Logging: `--log_stdout_level`, `--log_file_level`, `--log_file`.
 - `--verbose` for extra dispatch logs.
 
+## End-to-End Data Workflow
+Follow these steps to go from source checkout to final plots/dashboards:
+
+1) Build the simulator  
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
+Artifacts land in `build/bin/` (binary plus copied `data/` and `logs/`).
+
+2) Run a simulation to generate traces  
+Pick a scheduler (see supported list below), workload, and scenario, then run:
+```bash
+./build/bin/scheduler_sim \
+  --workload_file data/workload.json \
+  --scenario_file data/scenarios/scenario_1.yml \
+  --scheduler_policy fcfs \
+  --duration 10000 \
+  --out_file build/bin/results/trace.json
+```
+- To run multiple schedulers in one go: `--scheduler_policy fcfs,mlfq,edf` (files get suffixed per policy).
+- Use `--results_subdir experiment_01` to keep runs organized (`build/bin/results/experiment_01/`).
+
+3) Inspect raw outputs (optional but handy)  
+Traces are JSON; quick checks:
+```bash
+jq '.summary' build/bin/results/trace.json
+python -m json.tool build/bin/results/trace.json | head
+```
+
+4) Prepare a Python environment for notebooks  
+From the repo root (or `python/`), create/activate a venv and install deps:
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
+pip install --upgrade pip
+pip install pandas plotly ipywidgets kaleido
+```
+
+5) Run batch simulations via notebook (optional)  
+Open `python/batch_runner.ipynb` (e.g., `jupyter lab python/batch_runner.ipynb`) and run the cells:
+- It auto-discovers the built binary under `build/bin/**`.
+- Pick scenarios/workloads/policies, set output root (defaults to `build/bin/results/`), then execute to emit multiple `trace*.json` files.
+
+6) Explore and export visuals  
+Open `python/dashboard.ipynb` from the `python/` directory:
+- It scans for `trace*.json` under `build/bin/results/**` (or paths you supply).
+- Run the notebook cells to view timelines, utilization, idle bars, scatter plots, and class breakdowns.
+- Use the provided export cells (plotly/kaleido) to save PNG/HTML artifacts for reports.
+
+7) Final data hand-off  
+Bundle the generated `trace*.json` plus any exported PNG/HTML from the dashboard. Include the `results_subdir` name so others can rerun with the same config.
+
 ## Workloads and Scenarios
 - Workloads live under `data/workloads/` and define tasks: arrival/period, exec range, deadlines, priorities, task class, optional I/O waits.
 - Scenarios under `data/scenarios/` set hardware (cores), scheduler options, timing parameters, logging, etc.
