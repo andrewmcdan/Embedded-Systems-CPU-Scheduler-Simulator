@@ -1,5 +1,0 @@
-cores: 2
-context_switch_cost_us: 15
-io_completion_quantum_us: 100
-throttle_events:
-    - { start_ms: 30000, end_ms: 50000, freq_multiplier: 0.5 }
