@@ -27,6 +27,16 @@ Artifacts:
 - `build/bin/scheduler_sim` (or `.exe` on Windows)
 - `build/bin/data` and `build/bin/logs` copied after build
 
+## VS Code Setup
+- Extensions: install **C/C++ Extension Pack** (`ms-vscode.cpptools-extension-pack`) for IntelliSense/debugging/CMake Tools and **Jupyter** (`ms-toolsai.jupyter`) for notebooks.
+- Configure/build via CMake Tools:
+  1. `F1` → `CMake: Configure`, choose your kit/generator; this creates/updates `build/`.
+  2. `F1` → `CMake: Build` to compile (target `all` by default, producing `build/bin/scheduler_sim`).
+- Using notebooks in VS Code:
+  - Open `python/batch_runner.ipynb` or `python/dashboard.ipynb`.
+  - `Python: Select Interpreter` and pick the venv you created (see Python setup below).
+  - Run cells inline; outputs appear in the notebook/interactive window.
+
 ## Running the Simulator
 Basic run with defaults:
 ```bash
